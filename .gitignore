@@ -1,0 +1,13 @@
+node_modules/
+dist/
+build/
+cdk.out/
+.env
+.env.local
+*.js.map
+*.d.ts
+!packages/infra/bin/*.ts
+!packages/infra/lib/*.ts
+coverage/
+test-results/
+playwright-report/
