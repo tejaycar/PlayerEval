@@ -1,0 +1,72 @@
+name: Deploy
+
+on:
+  push:
+    branches: ['*']
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build backend
+        run: npm run build -w @player-eval/backend
+
+      - name: Build frontend
+        run: npm run build -w @player-eval/frontend
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-arn: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: us-east-2
+
+      - name: Install CDK
+        run: npm install -g aws-cdk
+
+      - name: Deploy CDK Stack
+        working-directory: packages/infra
+        env:
+          BRANCH_NAME: ${{ github.ref_name }}
+        run: |
+          cdk deploy --require-approval never
+
+      - name: Get CloudFront URL
+        id: get-url
+        working-directory: packages/infra
+        env:
+          BRANCH_NAME: ${{ github.ref_name }}
+        run: |
+          STACK_NAME=$([[ "${{ github.ref_name }}" == "main" ]] && echo "PlayerEval" || echo "PlayerEval-${{ github.ref_name }}" | sed 's/[^a-zA-Z0-9]/-/g')
+          URL=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --query "Stacks[0].Outputs[?OutputKey=='CloudFrontUrl'].OutputValue" --output text)
+          echo "url=$URL" >> $GITHUB_OUTPUT
+
+      - name: Install Playwright
+        run: npx playwright install --with-deps chromium
+
+      - name: Run Playwright tests
+        env:
+          BASE_URL: ${{ steps.get-url.outputs.url }}
+          BYPASS_AUTH: ${{ github.ref_name != 'main' && 'true' || 'false' }}
+        run: npx playwright test
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
