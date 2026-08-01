@@ -81,7 +81,7 @@ export function verifyJWT(token: string): JWTPayload | null {
 
 export function authenticateRequest(headers: Record<string, string | undefined>): JWTPayload | null {
   if (BYPASS_AUTH) {
-    // In test mode, accept a test header
+    // In test mode, accept a test header with JSON user payload
     const testUser = headers['x-test-user'];
     if (testUser) {
       try {
@@ -90,6 +90,27 @@ export function authenticateRequest(headers: Record<string, string | undefined>)
         return null;
       }
     }
+
+    // Also try Authorization header as JSON (base64 or plain)
+    const authHeader = headers.authorization || headers.Authorization;
+    if (authHeader?.startsWith('Bearer ')) {
+      const token = authHeader.slice(7);
+      // Try JWT first
+      const jwtResult = verifyJWT(token);
+      if (jwtResult) return jwtResult;
+      // Try base64-encoded JSON
+      try {
+        return JSON.parse(Buffer.from(token, 'base64').toString()) as JWTPayload;
+      } catch {
+        // Try plain JSON
+        try {
+          return JSON.parse(token) as JWTPayload;
+        } catch {
+          return null;
+        }
+      }
+    }
+    return null;
   }
 
   const authHeader = headers.authorization || headers.Authorization;

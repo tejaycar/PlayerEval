@@ -15,12 +15,17 @@ const coachUser = {
   isLead: false,
 };
 
+function makeBypassToken(user: any): string {
+  return btoa(JSON.stringify(user));
+}
+
 test.describe('Lead Flow', () => {
   test.beforeEach(async ({ page }) => {
-    // Set up auth bypass - store token and user in localStorage
+    // Set up auth bypass - store base64 token and user in localStorage
     await page.goto('/');
     await page.evaluate((user) => {
-      localStorage.setItem('playereval_token', 'test-bypass-token');
+      const token = btoa(JSON.stringify(user));
+      localStorage.setItem('playereval_token', token);
       localStorage.setItem('playereval_user', JSON.stringify({ ...user, name: 'Test Lead' }));
     }, leadUser);
   });
@@ -45,13 +50,31 @@ test.describe('Lead Flow', () => {
     await page.click('button:has-text("Switch to Coach View")');
     await expect(page).toHaveURL(/\/coach\//);
   });
+
+  test('can add a player manually', async ({ page }) => {
+    // This test requires a running backend - only works against deployed environments
+    test.skip(!process.env.BASE_URL, 'Requires deployed backend');
+    await page.goto('/lead/players');
+    await page.click('button:has-text("+ Add Player")');
+    await page.fill('input[type="text"]:first-of-type', 'Test Player');
+    // Fill number field
+    const inputs = page.locator('form input[type="text"]');
+    await inputs.nth(0).fill('Test Player');
+    await inputs.nth(1).fill('42');
+    await inputs.nth(2).fill('QB');
+    await inputs.nth(3).fill('WR');
+    await page.click('button:has-text("Save")');
+    // Player should appear in the table
+    await expect(page.locator('table')).toContainText('Test Player');
+  });
 });
 
 test.describe('Coach Flow', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/');
     await page.evaluate((user) => {
-      localStorage.setItem('playereval_token', 'test-bypass-token');
+      const token = btoa(JSON.stringify(user));
+      localStorage.setItem('playereval_token', token);
       localStorage.setItem('playereval_user', JSON.stringify({ ...user, name: 'Test Coach' }));
     }, coachUser);
   });

@@ -13,10 +13,9 @@ const client = new DynamoDBClient({ region: process.env.AWS_REGION || 'us-east-2
 export const docClient = DynamoDBDocumentClient.from(client);
 
 const TABLE_NAME = process.env.TABLE_NAME || 'PlayerEval';
-const BRANCH_PREFIX = process.env.BRANCH_PREFIX || '';
 
 function pk(key: string): string {
-  return BRANCH_PREFIX ? `${BRANCH_PREFIX}#${key}` : key;
+  return key;
 }
 
 // === Generic operations ===
