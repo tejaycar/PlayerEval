@@ -1,22 +1,39 @@
 import React, { useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
-import { auth } from '../api';
+import { useSearchParams, useNavigate } from 'react-router-dom';
+import { auth, setToken, setStoredUser } from '../api';
 
 export default function Signup() {
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [inviteCode, setInviteCode] = useState(searchParams.get('invite') || '');
   const [sent, setSent] = useState(false);
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setLoading(true);
     try {
-      await auth.signup(email, inviteCode);
-      setSent(true);
+      const result = await auth.signup(email, inviteCode);
+      // In bypass mode, the API returns the token directly - auto-verify
+      if (result.token) {
+        const verifyResult = await auth.verify(result.token);
+        setToken(verifyResult.token);
+        setStoredUser(verifyResult.coach);
+        if (verifyResult.coach.isLead) {
+          navigate('/lead/players', { replace: true });
+        } else {
+          navigate('/coach/rate', { replace: true });
+        }
+      } else {
+        setSent(true);
+      }
     } catch (err: any) {
       setError(err.message);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -67,9 +84,10 @@ export default function Signup() {
           </div>
           <button
             type="submit"
-            className="w-full bg-blue-600 text-white py-2 px-4 rounded hover:bg-blue-700 font-medium"
+            disabled={loading}
+            className="w-full bg-blue-600 text-white py-2 px-4 rounded hover:bg-blue-700 font-medium disabled:opacity-50"
           >
-            Sign Up
+            {loading ? 'Signing up...' : 'Sign Up'}
           </button>
         </form>
         <p className="mt-4 text-center text-sm text-gray-500">

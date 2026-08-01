@@ -7,16 +7,32 @@ export default function Login() {
   const [teamId, setTeamId] = useState('');
   const [sent, setSent] = useState(false);
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setLoading(true);
     try {
-      await auth.requestLink(email, teamId);
-      setSent(true);
+      const result = await auth.requestLink(email, teamId);
+      // In bypass mode, the API returns the token directly - auto-verify
+      if (result.token) {
+        const verifyResult = await auth.verify(result.token);
+        setToken(verifyResult.token);
+        setStoredUser(verifyResult.coach);
+        if (verifyResult.coach.isLead) {
+          navigate('/lead/players', { replace: true });
+        } else {
+          navigate('/coach/rate', { replace: true });
+        }
+      } else {
+        setSent(true);
+      }
     } catch (err: any) {
       setError(err.message);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -68,14 +84,20 @@ export default function Login() {
           </div>
           <button
             type="submit"
-            className="w-full bg-blue-600 text-white py-2 px-4 rounded hover:bg-blue-700 font-medium"
+            disabled={loading}
+            className="w-full bg-blue-600 text-white py-2 px-4 rounded hover:bg-blue-700 font-medium disabled:opacity-50"
           >
-            Send Login Link
+            {loading ? 'Signing in...' : 'Sign In'}
           </button>
         </form>
-        <p className="mt-4 text-center text-sm text-gray-500">
-          Have an invite link? <a href="/signup" className="text-blue-600 hover:underline">Sign up here</a>
-        </p>
+        <div className="mt-4 text-center space-y-2">
+          <p className="text-sm text-gray-500">
+            Have an invite link? <a href="/signup" className="text-blue-600 hover:underline">Sign up here</a>
+          </p>
+          <p className="text-sm text-gray-500">
+            New team? <a href="/setup" className="text-blue-600 hover:underline">Create a team</a>
+          </p>
+        </div>
       </div>
     </div>
   );

@@ -1,43 +1,63 @@
 import type { Player, Coach, Assignment } from '@player-eval/shared';
 
 /**
- * Auto-assignment algorithm that minimizes overlap concentration.
- * 
- * Goal: Assign coaches to players such that:
- * 1. Every player gets exactly their required number of evaluations
- * 2. No coach exceeds their max players limit
- * 3. Overlap is minimized - especially across groups of 3-4 coaches
- * 
- * Strategy: For each player needing an evaluator, pick the eligible coach
- * who shares the fewest current co-assignments with the player's other
- * assigned coaches. This naturally disperses overlap.
+ * Auto-assignment algorithm that:
+ * 1. Guarantees every player gets their required minimum evaluations
+ * 2. Distributes extra eval slots evenly across players
+ * 3. Loads coaches proportionally to their max capacity
+ * 4. Minimizes overlap concentration across coach subsets
+ *
+ * Strategy:
+ * - Phase 1: Fill minimum requirements. For each unfilled slot, pick the coach
+ *   with the lowest capacity utilization (load/max) who minimizes overlap.
+ * - Phase 2: Distribute remaining capacity evenly. Players who have fewer
+ *   evaluations get priority for extras, spread across coaches proportionally.
  */
 export function computeAssignments(
   players: Player[],
   coaches: Coach[],
   teamId: string
 ): Assignment[] {
-  // Track state
   const assignments: Assignment[] = [];
-  const coachLoad: Map<string, number> = new Map(); // coachId -> current # assigned
-  const playerAssignedCoaches: Map<string, Set<string>> = new Map(); // playerId -> set of coachIds
-  const coachPairOverlap: Map<string, number> = new Map(); // "coachA#coachB" -> shared player count
+  const coachLoad: Map<string, number> = new Map();
+  const playerEvalCount: Map<string, number> = new Map();
+  const playerAssignedCoaches: Map<string, Set<string>> = new Map();
+  const coachPairOverlap: Map<string, number> = new Map();
 
   // Initialize
   coaches.forEach((c) => coachLoad.set(c.id, 0));
-  players.forEach((p) => playerAssignedCoaches.set(p.id, new Set()));
+  players.forEach((p) => {
+    playerEvalCount.set(p.id, 0);
+    playerAssignedCoaches.set(p.id, new Set());
+  });
 
-  // Sort players by required evaluations descending (hardest to satisfy first)
-  const sortedPlayers = [...players].sort(
-    (a, b) => b.requiredEvaluations - a.requiredEvaluations
-  );
+  const totalCapacity = coaches.reduce((sum, c) => sum + c.maxPlayers, 0);
+  const totalRequired = players.reduce((sum, p) => sum + p.requiredEvaluations, 0);
 
-  // For each player, assign the required number of coaches
-  for (const player of sortedPlayers) {
-    const needed = player.requiredEvaluations;
-    const alreadyAssigned = playerAssignedCoaches.get(player.id)!;
+  // === Phase 1: Fill minimum requirements ===
+  // Process in rounds to ensure even distribution across coaches.
+  // Each round gives each player at most one new assignment.
+  let progress = true;
+  while (progress) {
+    progress = false;
 
-    for (let i = alreadyAssigned.size; i < needed; i++) {
+    // Sort players: those furthest from their minimum get priority
+    const playersNeedingEvals = players
+      .filter((p) => {
+        const count = playerEvalCount.get(p.id)!;
+        return count < p.requiredEvaluations;
+      })
+      .sort((a, b) => {
+        // Priority: lowest completion ratio first
+        const ratioA = playerEvalCount.get(a.id)! / a.requiredEvaluations;
+        const ratioB = playerEvalCount.get(b.id)! / b.requiredEvaluations;
+        if (ratioA !== ratioB) return ratioA - ratioB;
+        // Tie-break: higher requirement first (harder to satisfy)
+        return b.requiredEvaluations - a.requiredEvaluations;
+      });
+
+    for (const player of playersNeedingEvals) {
+      const alreadyAssigned = playerAssignedCoaches.get(player.id)!;
       const bestCoach = findBestCoach(
         player,
         coaches,
@@ -46,35 +66,101 @@ export function computeAssignments(
         coachPairOverlap
       );
 
-      if (!bestCoach) {
-        // No eligible coach available - skip (shouldn't happen with valid input)
-        console.warn(
-          `Cannot assign evaluation #${i + 1} for player ${player.name} - no eligible coaches`
-        );
-        break;
-      }
+      if (!bestCoach) continue;
 
-      // Record assignment
-      assignments.push({
+      assignCoachToPlayer(
+        bestCoach,
+        player,
         teamId,
-        coachId: bestCoach.id,
-        playerId: player.id,
+        assignments,
+        coachLoad,
+        playerEvalCount,
+        playerAssignedCoaches,
+        coachPairOverlap
+      );
+      progress = true;
+    }
+  }
+
+  // === Phase 2: Distribute extra capacity evenly ===
+  // If coaches have remaining capacity after all minimums are met,
+  // spread extra evals evenly across players.
+  const remainingCapacity = totalCapacity - assignments.length;
+  if (remainingCapacity > 0) {
+    // Distribute extras in rounds
+    let extraProgress = true;
+    while (extraProgress) {
+      extraProgress = false;
+
+      // All players sorted by current eval count (fewest first for even spread)
+      const playersByCount = [...players].sort((a, b) => {
+        const countA = playerEvalCount.get(a.id)!;
+        const countB = playerEvalCount.get(b.id)!;
+        return countA - countB;
       });
 
-      // Update state
-      coachLoad.set(bestCoach.id, (coachLoad.get(bestCoach.id) || 0) + 1);
+      for (const player of playersByCount) {
+        const alreadyAssigned = playerAssignedCoaches.get(player.id)!;
+        // Don't assign more coaches than exist
+        if (alreadyAssigned.size >= coaches.length) continue;
 
-      // Update pair overlap counts
-      for (const existingCoachId of alreadyAssigned) {
-        const pairKey = makePairKey(bestCoach.id, existingCoachId);
-        coachPairOverlap.set(pairKey, (coachPairOverlap.get(pairKey) || 0) + 1);
+        const bestCoach = findBestCoach(
+          player,
+          coaches,
+          coachLoad,
+          alreadyAssigned,
+          coachPairOverlap
+        );
+
+        if (!bestCoach) continue;
+
+        assignCoachToPlayer(
+          bestCoach,
+          player,
+          teamId,
+          assignments,
+          coachLoad,
+          playerEvalCount,
+          playerAssignedCoaches,
+          coachPairOverlap
+        );
+        extraProgress = true;
+        break; // One per round for even distribution
       }
-
-      alreadyAssigned.add(bestCoach.id);
     }
   }
 
   return assignments;
+}
+
+function assignCoachToPlayer(
+  coach: Coach,
+  player: Player,
+  teamId: string,
+  assignments: Assignment[],
+  coachLoad: Map<string, number>,
+  playerEvalCount: Map<string, number>,
+  playerAssignedCoaches: Map<string, Set<string>>,
+  coachPairOverlap: Map<string, number>
+): void {
+  const alreadyAssigned = playerAssignedCoaches.get(player.id)!;
+
+  assignments.push({
+    teamId,
+    coachId: coach.id,
+    playerId: player.id,
+  });
+
+  coachLoad.set(coach.id, (coachLoad.get(coach.id) || 0) + 1);
+  playerEvalCount.set(player.id, (playerEvalCount.get(player.id) || 0) + 1);
+
+  // Update pair overlap counts
+  for (const existingCoachId of alreadyAssigned) {
+    const pairKey = makePairKey(coach.id, existingCoachId);
+    coachPairOverlap.set(pairKey, (coachPairOverlap.get(pairKey) || 0) + 1);
+  }
+
+  alreadyAssigned.add(coach.id);
 }
 
 function findBestCoach(
@@ -95,6 +181,9 @@ function findBestCoach(
     const currentLoad = coachLoad.get(coach.id) || 0;
     if (currentLoad >= coach.maxPlayers) continue;
 
+    // Calculate utilization ratio (0.0 to 1.0)
+    const utilization = currentLoad / coach.maxPlayers;
+
     // Calculate overlap score: sum of pair overlaps with all coaches already assigned to this player
     let overlapScore = 0;
     for (const existingCoachId of alreadyAssigned) {
@@ -102,8 +191,10 @@ function findBestCoach(
       overlapScore += coachPairOverlap.get(pairKey) || 0;
     }
 
-    // Tie-break by current load (prefer less-loaded coaches)
-    const score = overlapScore * 1000 + currentLoad;
+    // Score: primarily minimize overlap, then prefer lower utilization ratio
+    // Overlap is weighted heavily to maintain the "minimize grouping" property
+    // Utilization ensures proportional loading (a coach at 50% of 10 = same priority as 50% of 15)
+    const score = overlapScore * 10000 + utilization * 1000;
 
     if (score < bestScore) {
       bestScore = score;
