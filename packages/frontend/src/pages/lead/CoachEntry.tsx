@@ -30,6 +30,7 @@ export default function CoachEntry() {
   const [editValues, setEditValues] = useState<EditableRow>(emptyRow);
   const [newRow, setNewRow] = useState<EditableRow>({ ...emptyRow });
   const newRowRef = useRef<HTMLTableRowElement>(null);
+  const editRowRef = useRef<HTMLTableRowElement>(null);
 
   useEffect(() => {
     loadCoaches();
@@ -93,7 +94,7 @@ export default function CoachEntry() {
     a.href = url;
     a.download = 'coaches_template.csv';
     a.click();
-    URL.revokeObjectURL(url);
+    setTimeout(() => URL.revokeObjectURL(url), 0);
   };
 
   const handleGetInviteLink = async () => {
@@ -153,6 +154,14 @@ export default function CoachEntry() {
     } else if (e.key === 'Escape') {
       setEditingId(null);
     }
+  };
+
+  const handleEditBlur = (e: React.FocusEvent, id: string) => {
+    const relatedTarget = e.relatedTarget as HTMLElement | null;
+    if (editRowRef.current && relatedTarget && editRowRef.current.contains(relatedTarget)) {
+      return;
+    }
+    saveEdit(id);
   };
 
   const handleNewRowSave = async () => {
@@ -247,6 +256,7 @@ export default function CoachEntry() {
             {coachList.map((coach) => (
               <tr
                 key={coach.id}
+                ref={editingId === coach.id ? editRowRef : undefined}
                 className="hover:bg-gray-50 cursor-pointer"
                 onClick={() => { if (editingId !== coach.id) startEditing(coach); }}
               >
@@ -258,7 +268,7 @@ export default function CoachEntry() {
                         value={editValues.name}
                         onChange={(e) => setEditValues({ ...editValues, name: e.target.value })}
                         onKeyDown={(e) => handleEditKeyDown(e, coach.id)}
-                        onBlur={() => saveEdit(coach.id)}
+                        onBlur={(e) => handleEditBlur(e, coach.id)}
                         className="w-full px-2 py-1 border rounded text-sm"
                         autoFocus
                       />
@@ -269,7 +279,7 @@ export default function CoachEntry() {
                         value={editValues.email}
                         onChange={(e) => setEditValues({ ...editValues, email: e.target.value })}
                         onKeyDown={(e) => handleEditKeyDown(e, coach.id)}
-                        onBlur={() => saveEdit(coach.id)}
+                        onBlur={(e) => handleEditBlur(e, coach.id)}
                         className="w-full px-2 py-1 border rounded text-sm"
                       />
                     </td>
@@ -280,7 +290,7 @@ export default function CoachEntry() {
                         value={editValues.maxPlayers}
                         onChange={(e) => setEditValues({ ...editValues, maxPlayers: e.target.value })}
                         onKeyDown={(e) => handleEditKeyDown(e, coach.id)}
-                        onBlur={() => saveEdit(coach.id)}
+                        onBlur={(e) => handleEditBlur(e, coach.id)}
                         className="w-full px-2 py-1 border rounded text-sm"
                       />
                     </td>

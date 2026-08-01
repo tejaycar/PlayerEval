@@ -34,6 +34,7 @@ export default function PlayerEntry() {
   const [editValues, setEditValues] = useState<EditableRow>(emptyRow);
   const [newRow, setNewRow] = useState<EditableRow>({ ...emptyRow });
   const newRowRef = useRef<HTMLTableRowElement>(null);
+  const editRowRef = useRef<HTMLTableRowElement>(null);
 
   useEffect(() => {
     loadPlayers();
@@ -97,7 +98,7 @@ export default function PlayerEntry() {
     a.href = url;
     a.download = 'players_template.csv';
     a.click();
-    URL.revokeObjectURL(url);
+    setTimeout(() => URL.revokeObjectURL(url), 0);
   };
 
   const handleDelete = async (id: string) => {
@@ -148,6 +149,14 @@ export default function PlayerEntry() {
     } else if (e.key === 'Escape') {
       setEditingId(null);
     }
+  };
+
+  const handleEditBlur = (e: React.FocusEvent, id: string) => {
+    const relatedTarget = e.relatedTarget as HTMLElement | null;
+    if (editRowRef.current && relatedTarget && editRowRef.current.contains(relatedTarget)) {
+      return;
+    }
+    saveEdit(id);
   };
 
   const handleNewRowSave = async () => {
@@ -228,6 +237,7 @@ export default function PlayerEntry() {
             {playerList.map((player) => (
               <tr
                 key={player.id}
+                ref={editingId === player.id ? editRowRef : undefined}
                 className="hover:bg-gray-50 cursor-pointer"
                 onClick={() => { if (editingId !== player.id) startEditing(player); }}
               >
@@ -239,7 +249,7 @@ export default function PlayerEntry() {
                         value={editValues.number}
                         onChange={(e) => setEditValues({ ...editValues, number: e.target.value })}
                         onKeyDown={(e) => handleEditKeyDown(e, player.id)}
-                        onBlur={() => saveEdit(player.id)}
+                        onBlur={(e) => handleEditBlur(e, player.id)}
                         className="w-full px-2 py-1 border rounded text-sm"
                       />
                     </td>
@@ -249,7 +259,7 @@ export default function PlayerEntry() {
                         value={editValues.name}
                         onChange={(e) => setEditValues({ ...editValues, name: e.target.value })}
                         onKeyDown={(e) => handleEditKeyDown(e, player.id)}
-                        onBlur={() => saveEdit(player.id)}
+                        onBlur={(e) => handleEditBlur(e, player.id)}
                         className="w-full px-2 py-1 border rounded text-sm"
                         autoFocus
                       />
@@ -260,7 +270,7 @@ export default function PlayerEntry() {
                         value={editValues.primaryPosition}
                         onChange={(e) => setEditValues({ ...editValues, primaryPosition: e.target.value })}
                         onKeyDown={(e) => handleEditKeyDown(e, player.id)}
-                        onBlur={() => saveEdit(player.id)}
+                        onBlur={(e) => handleEditBlur(e, player.id)}
                         className="w-full px-2 py-1 border rounded text-sm"
                       />
                     </td>
@@ -270,7 +280,7 @@ export default function PlayerEntry() {
                         value={editValues.secondaryPosition}
                         onChange={(e) => setEditValues({ ...editValues, secondaryPosition: e.target.value })}
                         onKeyDown={(e) => handleEditKeyDown(e, player.id)}
-                        onBlur={() => saveEdit(player.id)}
+                        onBlur={(e) => handleEditBlur(e, player.id)}
                         className="w-full px-2 py-1 border rounded text-sm"
                       />
                     </td>
@@ -281,7 +291,7 @@ export default function PlayerEntry() {
                         value={editValues.requiredEvaluations}
                         onChange={(e) => setEditValues({ ...editValues, requiredEvaluations: e.target.value })}
                         onKeyDown={(e) => handleEditKeyDown(e, player.id)}
-                        onBlur={() => saveEdit(player.id)}
+                        onBlur={(e) => handleEditBlur(e, player.id)}
                         className="w-full px-2 py-1 border rounded text-sm"
                       />
                     </td>

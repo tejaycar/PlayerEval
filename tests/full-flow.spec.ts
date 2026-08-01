@@ -68,10 +68,11 @@ test.describe('Full E2E Flow - 45 Players, 16 Coaches, Assignments, Evaluations'
     expect(setupRes.ok).toBeTruthy();
     const setupData = await setupRes.json();
     expect(setupData.teamId).toBeTruthy();
-    expect(setupData.coachId).toBeTruthy();
+    expect(setupData.coach).toBeTruthy();
+    expect(setupData.coach.id).toBeTruthy();
 
     teamId = setupData.teamId;
-    leadCoachId = setupData.coachId;
+    leadCoachId = setupData.coach.id;
     leadToken = makeToken(leadCoachId, teamId, `e2e-lead-${uniqueSuffix}@test.com`, true);
 
     // ---- Step 2: Create 45 players via POST /api/players/upload ----
