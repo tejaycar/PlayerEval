@@ -51,7 +51,7 @@ export class PlayerEvalStack extends cdk.Stack {
         BASE_URL: '', // Will be set after CloudFront is created
         NODE_ENV: isProduction ? 'production' : 'development',
         AWS_REGION_NAME: 'us-east-2',
-        SES_FROM_EMAIL: 'noreply@playereval.com',
+        SES_FROM_EMAIL: 'tejaycar@gmail.com',
       },
     });
 
