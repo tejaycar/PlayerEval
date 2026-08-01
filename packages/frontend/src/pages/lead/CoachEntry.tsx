@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { coaches } from '../../api';
 
 interface Coach {
@@ -9,13 +9,27 @@ interface Coach {
   isLead: boolean;
 }
 
+interface EditableRow {
+  name: string;
+  email: string;
+  maxPlayers: string;
+}
+
+const emptyRow: EditableRow = {
+  name: '',
+  email: '',
+  maxPlayers: '10',
+};
+
 export default function CoachEntry() {
   const [coachList, setCoachList] = useState<Coach[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [inviteLink, setInviteLink] = useState('');
-  const [showAddForm, setShowAddForm] = useState(false);
-  const [newCoach, setNewCoach] = useState({ name: '', email: '', maxPlayers: '10' });
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editValues, setEditValues] = useState<EditableRow>(emptyRow);
+  const [newRow, setNewRow] = useState<EditableRow>({ ...emptyRow });
+  const newRowRef = useRef<HTMLTableRowElement>(null);
 
   useEffect(() => {
     loadCoaches();
@@ -71,6 +85,17 @@ export default function CoachEntry() {
     e.target.value = '';
   };
 
+  const handleDownloadTemplate = () => {
+    const csv = 'name,email,max_players\n';
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'coaches_template.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   const handleGetInviteLink = async () => {
     try {
       const data = await coaches.getInviteLink();
@@ -84,18 +109,6 @@ export default function CoachEntry() {
     navigator.clipboard.writeText(inviteLink);
   };
 
-  const handleAddCoach = async (e: React.FormEvent) => {
-    e.preventDefault();
-    try {
-      await coaches.create(newCoach);
-      setNewCoach({ name: '', email: '', maxPlayers: '10' });
-      setShowAddForm(false);
-      await loadCoaches();
-    } catch (err: any) {
-      setError(err.message);
-    }
-  };
-
   const handleDelete = async (id: string) => {
     if (!confirm('Delete this coach?')) return;
     try {
@@ -103,6 +116,75 @@ export default function CoachEntry() {
       await loadCoaches();
     } catch (err: any) {
       setError(err.message);
+    }
+  };
+
+  const startEditing = (coach: Coach) => {
+    setEditingId(coach.id);
+    setEditValues({
+      name: coach.name,
+      email: coach.email,
+      maxPlayers: String(coach.maxPlayers),
+    });
+  };
+
+  const saveEdit = async (id: string) => {
+    if (!editValues.name.trim()) {
+      setEditingId(null);
+      return;
+    }
+    try {
+      await coaches.update(id, {
+        name: editValues.name.trim(),
+        email: editValues.email.trim(),
+        maxPlayers: editValues.maxPlayers,
+      });
+      setEditingId(null);
+      await loadCoaches();
+    } catch (err: any) {
+      setError(err.message);
+    }
+  };
+
+  const handleEditKeyDown = (e: React.KeyboardEvent, id: string) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      saveEdit(id);
+    } else if (e.key === 'Escape') {
+      setEditingId(null);
+    }
+  };
+
+  const handleNewRowSave = async () => {
+    if (!newRow.name.trim()) return;
+    try {
+      await coaches.create({
+        name: newRow.name.trim(),
+        email: newRow.email.trim(),
+        maxPlayers: newRow.maxPlayers || '10',
+      });
+      setNewRow({ ...emptyRow });
+      await loadCoaches();
+      setError('');
+    } catch (err: any) {
+      setError(err.message);
+    }
+  };
+
+  const handleNewRowKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      handleNewRowSave();
+    }
+  };
+
+  const handleNewRowBlur = (e: React.FocusEvent) => {
+    const relatedTarget = e.relatedTarget as HTMLElement | null;
+    if (newRowRef.current && relatedTarget && newRowRef.current.contains(relatedTarget)) {
+      return;
+    }
+    if (newRow.name.trim()) {
+      handleNewRowSave();
     }
   };
 
@@ -119,16 +201,16 @@ export default function CoachEntry() {
           >
             Get Invite Link
           </button>
+          <button
+            onClick={handleDownloadTemplate}
+            className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700 text-sm font-medium"
+          >
+            Download Template
+          </button>
           <label className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 cursor-pointer text-sm font-medium">
             Upload CSV
             <input type="file" accept=".csv" onChange={handleUpload} className="hidden" />
           </label>
-          <button
-            onClick={() => setShowAddForm(!showAddForm)}
-            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm font-medium"
-          >
-            + Add Coach
-          </button>
         </div>
       </div>
 
@@ -150,44 +232,6 @@ export default function CoachEntry() {
         </div>
       )}
 
-      {showAddForm && (
-        <form onSubmit={handleAddCoach} className="bg-gray-50 p-4 rounded-lg mb-6 grid grid-cols-4 gap-3 items-end">
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Name</label>
-            <input
-              type="text"
-              value={newCoach.name}
-              onChange={(e) => setNewCoach({ ...newCoach, name: e.target.value })}
-              className="w-full px-2 py-1 border rounded text-sm"
-              required
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Email</label>
-            <input
-              type="email"
-              value={newCoach.email}
-              onChange={(e) => setNewCoach({ ...newCoach, email: e.target.value })}
-              className="w-full px-2 py-1 border rounded text-sm"
-              required
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Max Players</label>
-            <input
-              type="number"
-              min="1"
-              value={newCoach.maxPlayers}
-              onChange={(e) => setNewCoach({ ...newCoach, maxPlayers: e.target.value })}
-              className="w-full px-2 py-1 border rounded text-sm"
-            />
-          </div>
-          <button type="submit" className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm">
-            Save
-          </button>
-        </form>
-      )}
-
       <div className="overflow-x-auto">
         <table className="w-full bg-white rounded-lg shadow-sm border">
           <thead className="bg-gray-50">
@@ -201,32 +245,122 @@ export default function CoachEntry() {
           </thead>
           <tbody className="divide-y divide-gray-200">
             {coachList.map((coach) => (
-              <tr key={coach.id} className="hover:bg-gray-50">
-                <td className="px-4 py-3 text-sm font-medium">{coach.name}</td>
-                <td className="px-4 py-3 text-sm">{coach.email}</td>
-                <td className="px-4 py-3 text-sm">{coach.maxPlayers}</td>
-                <td className="px-4 py-3 text-sm">
-                  {coach.isLead && (
-                    <span className="px-2 py-0.5 bg-yellow-100 text-yellow-800 rounded text-xs">Lead</span>
-                  )}
-                </td>
-                <td className="px-4 py-3 text-sm">
-                  <button
-                    onClick={() => handleDelete(coach.id)}
-                    className="text-red-600 hover:text-red-800 text-xs"
-                  >
-                    Delete
-                  </button>
-                </td>
+              <tr
+                key={coach.id}
+                className="hover:bg-gray-50 cursor-pointer"
+                onClick={() => { if (editingId !== coach.id) startEditing(coach); }}
+              >
+                {editingId === coach.id ? (
+                  <>
+                    <td className="px-4 py-2">
+                      <input
+                        type="text"
+                        value={editValues.name}
+                        onChange={(e) => setEditValues({ ...editValues, name: e.target.value })}
+                        onKeyDown={(e) => handleEditKeyDown(e, coach.id)}
+                        onBlur={() => saveEdit(coach.id)}
+                        className="w-full px-2 py-1 border rounded text-sm"
+                        autoFocus
+                      />
+                    </td>
+                    <td className="px-4 py-2">
+                      <input
+                        type="email"
+                        value={editValues.email}
+                        onChange={(e) => setEditValues({ ...editValues, email: e.target.value })}
+                        onKeyDown={(e) => handleEditKeyDown(e, coach.id)}
+                        onBlur={() => saveEdit(coach.id)}
+                        className="w-full px-2 py-1 border rounded text-sm"
+                      />
+                    </td>
+                    <td className="px-4 py-2">
+                      <input
+                        type="number"
+                        min="1"
+                        value={editValues.maxPlayers}
+                        onChange={(e) => setEditValues({ ...editValues, maxPlayers: e.target.value })}
+                        onKeyDown={(e) => handleEditKeyDown(e, coach.id)}
+                        onBlur={() => saveEdit(coach.id)}
+                        className="w-full px-2 py-1 border rounded text-sm"
+                      />
+                    </td>
+                    <td className="px-4 py-2 text-sm">
+                      {coach.isLead && (
+                        <span className="px-2 py-0.5 bg-yellow-100 text-yellow-800 rounded text-xs">Lead</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-2">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleDelete(coach.id); }}
+                        className="text-red-600 hover:text-red-800 text-xs"
+                      >
+                        Delete
+                      </button>
+                    </td>
+                  </>
+                ) : (
+                  <>
+                    <td className="px-4 py-3 text-sm font-medium">{coach.name}</td>
+                    <td className="px-4 py-3 text-sm">{coach.email}</td>
+                    <td className="px-4 py-3 text-sm">{coach.maxPlayers}</td>
+                    <td className="px-4 py-3 text-sm">
+                      {coach.isLead && (
+                        <span className="px-2 py-0.5 bg-yellow-100 text-yellow-800 rounded text-xs">Lead</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-sm">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleDelete(coach.id); }}
+                        className="text-red-600 hover:text-red-800 text-xs"
+                      >
+                        Delete
+                      </button>
+                    </td>
+                  </>
+                )}
               </tr>
             ))}
-            {coachList.length === 0 && (
-              <tr>
-                <td colSpan={5} className="px-4 py-8 text-center text-gray-500">
-                  No coaches yet. Upload a CSV or add coaches manually.
-                </td>
-              </tr>
-            )}
+            {/* New row for adding a coach */}
+            <tr ref={newRowRef} className="bg-gray-50/50">
+              <td className="px-4 py-2">
+                <input
+                  type="text"
+                  value={newRow.name}
+                  onChange={(e) => setNewRow({ ...newRow, name: e.target.value })}
+                  onKeyDown={handleNewRowKeyDown}
+                  onBlur={handleNewRowBlur}
+                  placeholder="New coach name..."
+                  className="w-full px-2 py-1 border border-dashed border-gray-300 rounded text-sm bg-white placeholder-gray-400"
+                />
+              </td>
+              <td className="px-4 py-2">
+                <input
+                  type="email"
+                  value={newRow.email}
+                  onChange={(e) => setNewRow({ ...newRow, email: e.target.value })}
+                  onKeyDown={handleNewRowKeyDown}
+                  onBlur={handleNewRowBlur}
+                  placeholder="email@example.com"
+                  className="w-full px-2 py-1 border border-dashed border-gray-300 rounded text-sm bg-white placeholder-gray-400"
+                />
+              </td>
+              <td className="px-4 py-2">
+                <input
+                  type="number"
+                  min="1"
+                  value={newRow.maxPlayers}
+                  onChange={(e) => setNewRow({ ...newRow, maxPlayers: e.target.value })}
+                  onKeyDown={handleNewRowKeyDown}
+                  onBlur={handleNewRowBlur}
+                  placeholder="10"
+                  className="w-full px-2 py-1 border border-dashed border-gray-300 rounded text-sm bg-white placeholder-gray-400"
+                />
+              </td>
+              <td className="px-4 py-2"></td>
+              <td className="px-4 py-2 text-xs text-gray-400">
+                Type to add
+              </td>
+            </tr>
           </tbody>
         </table>
       </div>
