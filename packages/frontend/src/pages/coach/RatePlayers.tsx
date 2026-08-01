@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { myPlayers, evaluations } from '../../api';
 
 interface PlayerWithEval {
@@ -18,26 +18,22 @@ interface PlayerWithEval {
   } | null;
 }
 
-interface RatingForm {
-  attitude: string;
-  effort: string;
-  footballIQ: string;
-  generalSkill: string;
-  positionSkill: string;
-}
+type RatingField = 'attitude' | 'effort' | 'footballIQ' | 'generalSkill' | 'positionSkill';
+
+const RATING_FIELDS: { key: RatingField; label: string }[] = [
+  { key: 'attitude', label: 'Attitude' },
+  { key: 'effort', label: 'Effort' },
+  { key: 'footballIQ', label: 'Football IQ' },
+  { key: 'generalSkill', label: 'General Skill' },
+  { key: 'positionSkill', label: 'Position Skill' },
+];
 
 export default function RatePlayers() {
   const [players, setPlayers] = useState<PlayerWithEval[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [editingPlayer, setEditingPlayer] = useState<string | null>(null);
-  const [ratingForm, setRatingForm] = useState<RatingForm>({
-    attitude: '5',
-    effort: '5',
-    footballIQ: '5',
-    generalSkill: '5',
-    positionSkill: '5',
-  });
+  const [localRatings, setLocalRatings] = useState<Record<string, Record<RatingField, string>>>({});
+  const savingRef = useRef<Record<string, boolean>>({});
 
   useEffect(() => {
     loadPlayers();
@@ -47,6 +43,18 @@ export default function RatePlayers() {
     try {
       const data = await myPlayers.list();
       setPlayers(data.players);
+      // Initialize local ratings from loaded data
+      const ratings: Record<string, Record<RatingField, string>> = {};
+      for (const p of data.players) {
+        ratings[p.id] = {
+          attitude: p.evaluation ? String(p.evaluation.attitude) : '5',
+          effort: p.evaluation ? String(p.evaluation.effort) : '5',
+          footballIQ: p.evaluation ? String(p.evaluation.footballIQ) : '5',
+          generalSkill: p.evaluation ? String(p.evaluation.generalSkill) : '5',
+          positionSkill: p.evaluation ? String(p.evaluation.positionSkill) : '5',
+        };
+      }
+      setLocalRatings(ratings);
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -54,34 +62,48 @@ export default function RatePlayers() {
     }
   };
 
-  const startRating = (player: PlayerWithEval) => {
-    setEditingPlayer(player.id);
-    if (player.evaluation) {
-      setRatingForm({
-        attitude: String(player.evaluation.attitude),
-        effort: String(player.evaluation.effort),
-        footballIQ: String(player.evaluation.footballIQ),
-        generalSkill: String(player.evaluation.generalSkill),
-        positionSkill: String(player.evaluation.positionSkill),
-      });
-    } else {
-      setRatingForm({ attitude: '5', effort: '5', footballIQ: '5', generalSkill: '5', positionSkill: '5' });
-    }
-  };
-
-  const submitRating = async () => {
-    if (!editingPlayer) return;
+  const saveRating = useCallback(async (playerId: string, ratings: Record<RatingField, string>) => {
+    if (savingRef.current[playerId]) return;
+    savingRef.current[playerId] = true;
     try {
       await evaluations.submit({
-        playerId: editingPlayer,
-        ...ratingForm,
+        playerId,
+        ...ratings,
       });
-      setEditingPlayer(null);
-      await loadPlayers();
       setError('');
+      // Reload to update the evaluated status and total
+      const data = await myPlayers.list();
+      setPlayers(data.players);
     } catch (err: any) {
       setError(err.message);
+    } finally {
+      savingRef.current[playerId] = false;
     }
+  }, []);
+
+  const handleRatingChange = (playerId: string, field: RatingField, value: string) => {
+    setLocalRatings((prev) => ({
+      ...prev,
+      [playerId]: {
+        ...prev[playerId],
+        [field]: value,
+      },
+    }));
+  };
+
+  const handleRatingBlur = (playerId: string) => {
+    const ratings = localRatings[playerId];
+    if (!ratings) return;
+    saveRating(playerId, ratings);
+  };
+
+  const computeTotal = (playerId: string): number => {
+    const ratings = localRatings[playerId];
+    if (!ratings) return 0;
+    return RATING_FIELDS.reduce((sum, { key }) => {
+      const val = parseInt(ratings[key], 10);
+      return sum + (isNaN(val) ? 0 : Math.min(10, Math.max(1, val)));
+    }, 0);
   };
 
   if (loading) return <div className="text-center py-8">Loading your players...</div>;
@@ -99,79 +121,45 @@ export default function RatePlayers() {
       {players.length === 0 ? (
         <p className="text-gray-500">No players assigned to you yet.</p>
       ) : (
-        <div className="space-y-3">
-          {players.map((player) => (
-            <div
-              key={player.id}
-              className={`bg-white rounded-lg shadow-sm border p-4 ${
-                player.evaluated ? 'border-green-200' : 'border-gray-200'
-              }`}
-            >
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                  <span className="text-lg font-bold text-gray-400">#{player.number}</span>
-                  <div>
-                    <div className="font-medium">{player.name}</div>
-                    <div className="text-xs text-gray-500">
-                      {player.primaryPosition}
-                      {player.secondaryPosition && ` / ${player.secondaryPosition}`}
-                    </div>
-                  </div>
-                  {player.evaluated && (
-                    <span className="px-2 py-0.5 bg-green-100 text-green-700 rounded text-xs">
-                      Rated ({player.evaluation?.totalScore}/50)
-                    </span>
-                  )}
-                </div>
-                <button
-                  onClick={() => startRating(player)}
-                  className={`px-4 py-2 rounded text-sm font-medium ${
-                    player.evaluated
-                      ? 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                      : 'bg-blue-600 text-white hover:bg-blue-700'
-                  }`}
-                >
-                  {player.evaluated ? 'Edit Rating' : 'Rate'}
-                </button>
-              </div>
-
-              {editingPlayer === player.id && (
-                <div className="mt-4 pt-4 border-t">
-                  <div className="grid grid-cols-5 gap-4">
-                    {(['attitude', 'effort', 'footballIQ', 'generalSkill', 'positionSkill'] as const).map((cat) => (
-                      <div key={cat}>
-                        <label className="block text-xs font-medium text-gray-600 mb-1">
-                          {cat === 'footballIQ' ? 'Football IQ' : cat === 'generalSkill' ? 'General Skill' : cat === 'positionSkill' ? 'Position Skill' : cat.charAt(0).toUpperCase() + cat.slice(1)}
-                        </label>
-                        <input
-                          type="number"
-                          min="1"
-                          max="10"
-                          value={ratingForm[cat]}
-                          onChange={(e) => setRatingForm({ ...ratingForm, [cat]: e.target.value })}
-                          className="w-full px-2 py-1 border rounded text-center text-sm"
-                        />
-                      </div>
-                    ))}
-                  </div>
-                  <div className="mt-3 flex gap-2">
-                    <button
-                      onClick={submitRating}
-                      className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 text-sm"
-                    >
-                      Save Rating
-                    </button>
-                    <button
-                      onClick={() => setEditingPlayer(null)}
-                      className="px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 text-sm"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          ))}
+        <div className="overflow-x-auto">
+          <table className="w-full bg-white rounded-lg shadow-sm border">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">Player Name</th>
+                <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">#</th>
+                <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">Primary Pos</th>
+                <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">Secondary Pos</th>
+                {RATING_FIELDS.map(({ key, label }) => (
+                  <th key={key} className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">{label}</th>
+                ))}
+                <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase">Total</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-200">
+              {players.map((player) => (
+                <tr key={player.id} className="hover:bg-gray-50">
+                  <td className="px-3 py-2 text-sm font-medium">{player.name}</td>
+                  <td className="px-3 py-2 text-sm text-gray-500">{player.number}</td>
+                  <td className="px-3 py-2 text-sm text-gray-500">{player.primaryPosition}</td>
+                  <td className="px-3 py-2 text-sm text-gray-500">{player.secondaryPosition}</td>
+                  {RATING_FIELDS.map(({ key }) => (
+                    <td key={key} className="px-2 py-2">
+                      <input
+                        type="number"
+                        min="1"
+                        max="10"
+                        value={localRatings[player.id]?.[key] ?? '5'}
+                        onChange={(e) => handleRatingChange(player.id, key, e.target.value)}
+                        onBlur={() => handleRatingBlur(player.id)}
+                        className="w-14 px-2 py-1 border rounded text-center text-sm"
+                      />
+                    </td>
+                  ))}
+                  <td className="px-3 py-2 text-sm font-bold text-center">{computeTotal(player.id)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
     </div>

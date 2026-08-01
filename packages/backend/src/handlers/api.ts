@@ -245,30 +245,64 @@ export async function handler(event: Event): Promise<Result> {
     return json(201, { id });
   }
 
-  // POST /players/upload - Bulk upload players from CSV data
+  // POST /players/upload - Bulk upload players from CSV data (upsert by number)
   if (method === 'POST' && path === '/players/upload') {
     if (!isLead) return json(403, { error: 'Only leads can upload players' });
     const { players: rows } = parseBody(event);
 
     if (!Array.isArray(rows)) return json(400, { error: 'Expected players array' });
 
-    const items = rows.map((row: any) => {
-      const id = uuidv4();
-      return {
-        PK: `TEAM#${teamId}`,
-        SK: `PLAYER#${id}`,
-        id,
-        teamId,
-        name: row.name,
-        number: row.number || '',
-        primaryPosition: row.primary_position || '',
-        secondaryPosition: row.secondary_position || '',
-        requiredEvaluations: parseInt(row.required_evaluations || '3', 10),
-      };
-    });
+    // Query existing players to match by number for upsert
+    const existingPlayers = await queryItems(`TEAM#${teamId}`, 'PLAYER#');
+    const numberToExisting = new Map<string, any>();
+    for (const p of existingPlayers) {
+      if (p.number) {
+        numberToExisting.set(String(p.number), p);
+      }
+    }
 
-    await batchPutItems(items);
-    return json(201, { count: items.length, ids: items.map((i) => i.id) });
+    const items: any[] = [];
+    const updatedIds: string[] = [];
+    const createdIds: string[] = [];
+
+    for (const row of rows) {
+      const rowNumber = String(row.number || '');
+      const existing = rowNumber ? numberToExisting.get(rowNumber) : undefined;
+
+      if (existing) {
+        // Update existing player
+        const updates: Record<string, any> = {
+          name: row.name,
+          number: rowNumber,
+          primaryPosition: row.primary_position || '',
+          secondaryPosition: row.secondary_position || '',
+          requiredEvaluations: parseInt(row.required_evaluations || '3', 10),
+        };
+        await updateItem(`TEAM#${teamId}`, `PLAYER#${existing.id}`, updates);
+        updatedIds.push(existing.id);
+      } else {
+        // Create new player
+        const id = uuidv4();
+        items.push({
+          PK: `TEAM#${teamId}`,
+          SK: `PLAYER#${id}`,
+          id,
+          teamId,
+          name: row.name,
+          number: rowNumber,
+          primaryPosition: row.primary_position || '',
+          secondaryPosition: row.secondary_position || '',
+          requiredEvaluations: parseInt(row.required_evaluations || '3', 10),
+        });
+        createdIds.push(id);
+      }
+    }
+
+    if (items.length > 0) {
+      await batchPutItems(items);
+    }
+
+    return json(201, { count: createdIds.length + updatedIds.length, created: createdIds, updated: updatedIds });
   }
 
   // PUT /players/:id
@@ -331,29 +365,61 @@ export async function handler(event: Event): Promise<Result> {
     return json(201, { id });
   }
 
-  // POST /coaches/upload - Bulk upload coaches
+  // POST /coaches/upload - Bulk upload coaches (upsert by email)
   if (method === 'POST' && path === '/coaches/upload') {
     if (!isLead) return json(403, { error: 'Only leads can upload coaches' });
     const { coaches: rows } = parseBody(event);
 
     if (!Array.isArray(rows)) return json(400, { error: 'Expected coaches array' });
 
-    const items = rows.map((row: any) => {
-      const id = uuidv4();
-      return {
-        PK: `TEAM#${teamId}`,
-        SK: `COACH#${id}`,
-        id,
-        teamId,
-        name: row.name,
-        email: row.email,
-        maxPlayers: parseInt(row.max_players || '10', 10),
-        isLead: false,
-      };
-    });
+    // Query existing coaches to match by email for upsert
+    const existingCoaches = await queryItems(`TEAM#${teamId}`, 'COACH#');
+    const emailToExisting = new Map<string, any>();
+    for (const c of existingCoaches) {
+      if (c.email) {
+        emailToExisting.set(c.email.toLowerCase(), c);
+      }
+    }
 
-    await batchPutItems(items);
-    return json(201, { count: items.length, ids: items.map((i) => i.id) });
+    const items: any[] = [];
+    const updatedIds: string[] = [];
+    const createdIds: string[] = [];
+
+    for (const row of rows) {
+      const rowEmail = (row.email || '').toLowerCase();
+      const existing = rowEmail ? emailToExisting.get(rowEmail) : undefined;
+
+      if (existing) {
+        // Update existing coach
+        const updates: Record<string, any> = {
+          name: row.name,
+          email: row.email,
+          maxPlayers: parseInt(row.max_players || '10', 10),
+        };
+        await updateItem(`TEAM#${teamId}`, `COACH#${existing.id}`, updates);
+        updatedIds.push(existing.id);
+      } else {
+        // Create new coach
+        const id = uuidv4();
+        items.push({
+          PK: `TEAM#${teamId}`,
+          SK: `COACH#${id}`,
+          id,
+          teamId,
+          name: row.name,
+          email: row.email,
+          maxPlayers: parseInt(row.max_players || '10', 10),
+          isLead: false,
+        });
+        createdIds.push(id);
+      }
+    }
+
+    if (items.length > 0) {
+      await batchPutItems(items);
+    }
+
+    return json(201, { count: createdIds.length + updatedIds.length, created: createdIds, updated: updatedIds });
   }
 
   // PUT /coaches/:id
