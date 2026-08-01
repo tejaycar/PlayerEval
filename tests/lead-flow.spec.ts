@@ -55,15 +55,18 @@ test.describe('Lead Flow', () => {
     // This test requires a running backend - only works against deployed environments
     test.skip(!process.env.BASE_URL, 'Requires deployed backend');
     await page.goto('/lead/players');
-    await page.click('button:has-text("+ Add Player")');
-    await page.fill('input[type="text"]:first-of-type', 'Test Player');
-    // Fill number field
-    const inputs = page.locator('form input[type="text"]');
-    await inputs.nth(0).fill('Test Player');
-    await inputs.nth(1).fill('42');
-    await inputs.nth(2).fill('QB');
-    await inputs.nth(3).fill('WR');
-    await page.click('button:has-text("Save")');
+
+    // The new UI uses an editable table with an empty final row for adding players
+    // Find the last row in the table (the empty new-player row) and type into its cells
+    const newRow = page.locator('table tbody tr').last();
+    await newRow.locator('input[placeholder="New player name..."]').fill('Test Player');
+    await newRow.locator('input[placeholder="#"]').fill('42');
+    await newRow.locator('input[placeholder="Position"]').first().fill('QB');
+    await newRow.locator('input[placeholder="Position"]').last().fill('WR');
+
+    // Press Enter to save the new row
+    await newRow.locator('input[placeholder="New player name..."]').press('Enter');
+
     // Player should appear in the table
     await expect(page.locator('table')).toContainText('Test Player');
   });
