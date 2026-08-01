@@ -30,7 +30,7 @@ export async function sendMagicLink(email: string, teamId: string): Promise<stri
 
   const link = `${BASE_URL}/auth/verify?token=${token}`;
 
-  if (process.env.NODE_ENV !== 'test') {
+  if (process.env.NODE_ENV !== 'test' && process.env.BYPASS_AUTH !== 'true') {
     await ses.send(
       new SendEmailCommand({
         Source: SES_FROM_EMAIL,
