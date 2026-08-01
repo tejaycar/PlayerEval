@@ -30,12 +30,6 @@ jobs:
       - name: Build frontend
         run: npm run build -w @player-eval/frontend
 
-      - name: Debug OIDC token claims
-        run: |
-          OIDC_TOKEN=$(curl -s -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
-            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=sts.amazonaws.com")
-          echo "$OIDC_TOKEN" | jq -r '.value' | cut -d. -f2 | base64 -d 2>/dev/null | jq '{sub, aud, iss}'
-
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -48,7 +42,7 @@ jobs:
       - name: Deploy CDK Stack
         working-directory: packages/infra
         env:
-          BRANCH_NAME: ${{ github.ref_name }}
+          BRANCH_NAME: ${{ github.event_name == 'pull_request' && github.head_ref || github.ref_name }}
         run: |
           cdk deploy --require-approval never
 
@@ -56,9 +50,10 @@ jobs:
         id: get-url
         working-directory: packages/infra
         env:
-          BRANCH_NAME: ${{ github.ref_name }}
+          BRANCH_NAME: ${{ github.event_name == 'pull_request' && github.head_ref || github.ref_name }}
         run: |
-          STACK_NAME=$([[ "${{ github.ref_name }}" == "main" ]] && echo "PlayerEval" || echo "PlayerEval-${{ github.ref_name }}" | sed 's/[^a-zA-Z0-9]/-/g')
+          ACTUAL_BRANCH="${BRANCH_NAME}"
+          STACK_NAME=$([[ "$ACTUAL_BRANCH" == "main" ]] && echo "PlayerEval" || echo "PlayerEval-$ACTUAL_BRANCH" | sed 's/[^a-zA-Z0-9]/-/g')
           URL=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --query "Stacks[0].Outputs[?OutputKey=='CloudFrontUrl'].OutputValue" --output text)
           echo "url=$URL" >> $GITHUB_OUTPUT
 
@@ -68,7 +63,7 @@ jobs:
       - name: Run Playwright tests
         env:
           BASE_URL: ${{ steps.get-url.outputs.url }}
-          BYPASS_AUTH: ${{ github.ref_name != 'main' && 'true' || 'false' }}
+          BYPASS_AUTH: ${{ (github.event_name == 'pull_request' && github.head_ref || github.ref_name) != 'main' && 'true' || 'false' }}
         run: npx playwright test
 
       - name: Upload test results
