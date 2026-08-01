@@ -104,6 +104,64 @@ export async function handler(event: Event): Promise<Result> {
     return json(200, { message: 'Magic link sent', token: process.env.BYPASS_AUTH === 'true' ? token : undefined });
   }
 
+  // POST /setup - Create a new team + lead coach (one-time setup, no auth required)
+  if (method === 'POST' && path === '/setup') {
+    const { teamName, leadName, leadEmail } = parseBody(event);
+    if (!teamName || !leadName || !leadEmail) {
+      return json(400, { error: 'teamName, leadName, and leadEmail are required' });
+    }
+
+    const teamId = uuidv4();
+    const coachId = uuidv4();
+    const inviteCode = uuidv4().slice(0, 8);
+
+    // Create team
+    await putItem({
+      PK: `TEAM#${teamId}`,
+      SK: 'META',
+      id: teamId,
+      name: teamName,
+      leadEmail,
+      inviteCode,
+      createdAt: new Date().toISOString(),
+    });
+
+    // Store invite code lookup
+    await putItem({
+      PK: `INVITE#${inviteCode}`,
+      SK: 'META',
+      teamId,
+    });
+
+    // Create lead coach
+    await putItem({
+      PK: `TEAM#${teamId}`,
+      SK: `COACH#${coachId}`,
+      id: coachId,
+      teamId,
+      name: leadName,
+      email: leadEmail,
+      maxPlayers: 20,
+      isLead: true,
+    });
+
+    // Issue JWT directly
+    const jwtPayload: JWTPayload = {
+      coachId,
+      teamId,
+      email: leadEmail,
+      isLead: true,
+    };
+    const jwtToken = issueJWT(jwtPayload);
+
+    return json(201, {
+      token: jwtToken,
+      coach: { id: coachId, name: leadName, isLead: true, teamId, email: leadEmail },
+      teamId,
+      inviteCode,
+    });
+  }
+
   // === Protected routes ===
   const headers: Record<string, string | undefined> = {};
   if (event.headers) {
