@@ -25,5 +25,5 @@
     "Run: source /root/.nvm/nvm.sh && cd /projects/sandbox/PlayerEval && npx playwright test"
   ],
   "blocked_reason": null,
-  "findings": "Build passes cleanly. All 10 Playwright tests pass (1 skipped as expected - the manual add test is guarded with test.skip). The unused React import warning does not cause build failure due to JSX transform. The editable tables use onBlur with relatedTarget check to only save when focus leaves the new row entirely."
+  "findings": "Build passes cleanly. All 10 Playwright tests pass (1 skipped as expected - the manual add test is guarded with test.skip). The unused React import warning does not cause build failure due to JSX transform. The editable tables use onBlur with relatedTarget check to only save when focus leaves the new row entirely. Review fix applied: existing-row inline edit now uses the same relatedTarget pattern as new-row to prevent redundant saves on intra-row tabbing. URL.revokeObjectURL deferred with setTimeout(0)."
 }
