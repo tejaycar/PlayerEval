@@ -47,11 +47,11 @@ export default function RatePlayers() {
       const ratings: Record<string, Record<RatingField, string>> = {};
       for (const p of data.players) {
         ratings[p.id] = {
-          attitude: p.evaluation ? String(p.evaluation.attitude) : '5',
-          effort: p.evaluation ? String(p.evaluation.effort) : '5',
-          footballIQ: p.evaluation ? String(p.evaluation.footballIQ) : '5',
-          generalSkill: p.evaluation ? String(p.evaluation.generalSkill) : '5',
-          positionSkill: p.evaluation ? String(p.evaluation.positionSkill) : '5',
+          attitude: p.evaluation ? String(p.evaluation.attitude) : '',
+          effort: p.evaluation ? String(p.evaluation.effort) : '',
+          footballIQ: p.evaluation ? String(p.evaluation.footballIQ) : '',
+          generalSkill: p.evaluation ? String(p.evaluation.generalSkill) : '',
+          positionSkill: p.evaluation ? String(p.evaluation.positionSkill) : '',
         };
       }
       setLocalRatings(ratings);
@@ -63,6 +63,9 @@ export default function RatePlayers() {
   };
 
   const saveRating = useCallback(async (playerId: string, ratings: Record<RatingField, string>) => {
+    // Don't save if any field is empty (incomplete rating)
+    const allFilled = RATING_FIELDS.every((f) => ratings[f.key] && ratings[f.key].trim() !== '');
+    if (!allFilled) return;
     if (savingRef.current[playerId]) return;
     savingRef.current[playerId] = true;
     try {
