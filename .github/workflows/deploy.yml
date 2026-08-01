@@ -58,12 +58,14 @@ jobs:
           echo "url=$URL" >> $GITHUB_OUTPUT
 
       - name: Install Playwright
+        if: ${{ (github.event_name == 'pull_request' && github.head_ref || github.ref_name) != 'main' }}
         run: npx playwright install --with-deps chromium
 
       - name: Run Playwright tests
+        if: ${{ (github.event_name == 'pull_request' && github.head_ref || github.ref_name) != 'main' }}
         env:
           BASE_URL: ${{ steps.get-url.outputs.url }}
-          BYPASS_AUTH: ${{ (github.event_name == 'pull_request' && github.head_ref || github.ref_name) != 'main' && 'true' || 'false' }}
+          BYPASS_AUTH: 'true'
         run: npx playwright test
 
       - name: Upload test results
