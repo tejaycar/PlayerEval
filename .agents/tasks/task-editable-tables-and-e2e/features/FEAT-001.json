@@ -2,7 +2,7 @@
   "id": "FEAT-001",
   "type": "feat",
   "description": "Convert PlayerEntry.tsx and CoachEntry.tsx to editable tables with empty-row-to-add pattern, inline editing, and a download template button. Also add capacity warning to CoachAssignment.tsx.",
-  "status": "in_progress",
+  "status": "completed",
   "steps": [
     "Rewrite packages/frontend/src/pages/lead/PlayerEntry.tsx to be an editable table. Remove the '+ Add Player' button and the separate add form. Instead, each existing row should have inline-editable cells (name, number, primary position, secondary position, required evaluations). Add an empty final row at the bottom of the table - when the user types data into it, it creates a new player. Keep the Upload CSV button. Add a 'Download Template' button that generates and downloads a CSV file with headers only: name,number,primary_position,secondary_position,required_evaluations (no data rows). Keep the delete action on each row.",
     "Rewrite packages/frontend/src/pages/lead/CoachEntry.tsx to be an editable table following the same pattern. Remove the '+ Add Coach' button and separate add form. Each existing row should have inline-editable cells (name, email, max players). Add an empty final row for adding new coaches. Keep the Upload CSV button and Get Invite Link button. Add a 'Download Template' button that generates and downloads a CSV with headers only: name,email,max_players (no data rows). Keep the delete action and role column.",
@@ -25,5 +25,5 @@
     "Run: source /root/.nvm/nvm.sh && cd /projects/sandbox/PlayerEval && npx playwright test"
   ],
   "blocked_reason": null,
-  "findings": ""
+  "findings": "Build passes cleanly. All 10 Playwright tests pass (1 skipped as expected - the manual add test is guarded with test.skip). The unused React import warning does not cause build failure due to JSX transform. The editable tables use onBlur with relatedTarget check to only save when focus leaves the new row entirely."
 }
