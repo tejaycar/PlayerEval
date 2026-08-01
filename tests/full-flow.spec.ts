@@ -148,11 +148,17 @@ test.describe('Full E2E Flow - 45 Players, 16 Coaches, Assignments, Evaluations'
     const assignments = assignmentsData.assignments || assignmentsData;
     expect(assignments.length).toBeGreaterThan(0);
 
-    // ---- Step 6: For each coach, submit evaluations ----
+    // ---- Step 6: For each coach (including lead), submit evaluations ----
     let totalEvaluationsSubmitted = 0;
 
-    for (const coach of coachRecords) {
-      const coachToken = makeToken(coach.id, teamId, coach.email, false);
+    // Include the lead coach in the evaluation loop
+    const allCoaches = [
+      { id: leadCoachId, name: 'E2E Lead', email: `e2e-lead-${uniqueSuffix}@test.com` },
+      ...coachRecords,
+    ];
+
+    for (const coach of allCoaches) {
+      const coachToken = makeToken(coach.id, teamId, coach.email, coach.id === leadCoachId);
 
       // Get this coach's assigned players
       const myPlayersRes = await fetch(`${baseURL}/api/my-players`, {
@@ -189,6 +195,7 @@ test.describe('Full E2E Flow - 45 Players, 16 Coaches, Assignments, Evaluations'
     }
 
     // Verify we submitted a meaningful number of evaluations
+    // Total should match required evals exactly since we include all coaches (including lead)
     expect(totalEvaluationsSubmitted).toBeGreaterThanOrEqual(totalRequiredEvals);
   });
 });
