@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 
 test('setup flow works end-to-end', async ({ page }) => {
+  test.skip(!process.env.BASE_URL, 'Requires deployed backend');
   await page.goto('/setup');
   await expect(page.locator('h2')).toContainText('Create Your Team');
 
