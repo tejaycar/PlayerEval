@@ -16,6 +16,7 @@ export interface Player {
   primaryPosition: string;
   secondaryPosition: string;
   requiredEvaluations: number;
+  isNew?: boolean;
 }
 
 export interface Coach {
@@ -71,6 +72,7 @@ export interface PlayerUploadRow {
   primary_position: string;
   secondary_position: string;
   required_evaluations: string;
+  is_new: string;
 }
 
 export interface CoachUploadRow {

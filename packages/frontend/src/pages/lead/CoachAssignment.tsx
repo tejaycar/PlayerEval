@@ -57,6 +57,17 @@ export default function CoachAssignment() {
     }
   };
 
+  const handleClearAssignments = async () => {
+    if (!confirm('Clear all assignments? This cannot be undone.')) return;
+    try {
+      await assignments.clearAll();
+      setAssignmentList([]);
+      setError('');
+    } catch (err: any) {
+      setError(err.message);
+    }
+  };
+
   const isAssigned = (coachId: string, playerId: string) => {
     return assignmentList.some((a) => a.coachId === coachId && a.playerId === playerId);
   };
@@ -87,12 +98,20 @@ export default function CoachAssignment() {
     <div>
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-2xl font-bold">Coach Assignments</h2>
-        <button
-          onClick={handleAutoAssign}
-          className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm font-medium"
-        >
-          Auto-Assign
-        </button>
+        <div className="flex gap-3">
+          <button
+            onClick={handleClearAssignments}
+            className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 text-sm font-medium"
+          >
+            Clear Assignments
+          </button>
+          <button
+            onClick={handleAutoAssign}
+            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm font-medium"
+          >
+            Auto-Assign
+          </button>
+        </div>
       </div>
 
       {error && (

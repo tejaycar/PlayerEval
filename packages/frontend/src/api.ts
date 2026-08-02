@@ -101,6 +101,7 @@ export const assignments = {
   autoAssign: () => request('POST', '/assignments/auto'),
   add: (coachId: string, playerId: string) => request('POST', '/assignments', { coachId, playerId }),
   remove: (coachId: string, playerId: string) => request('DELETE', `/assignments/${coachId}/${playerId}`),
+  clearAll: () => request('DELETE', '/assignments'),
 };
 
 // Evaluations
