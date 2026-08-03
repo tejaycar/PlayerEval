@@ -220,6 +220,7 @@ export async function handler(event: Event): Promise<Result> {
       primaryPosition: item.primaryPosition,
       secondaryPosition: item.secondaryPosition,
       requiredEvaluations: item.requiredEvaluations,
+      isNew: item.isNew || false,
     }));
     return json(200, { players });
   }
@@ -240,6 +241,7 @@ export async function handler(event: Event): Promise<Result> {
       primaryPosition: body.primaryPosition || body.primary_position || '',
       secondaryPosition: body.secondaryPosition || body.secondary_position || '',
       requiredEvaluations: parseInt(body.requiredEvaluations || body.required_evaluations || '3', 10),
+      isNew: body.isNew || false,
     });
 
     return json(201, { id });
@@ -277,6 +279,7 @@ export async function handler(event: Event): Promise<Result> {
           primaryPosition: row.primary_position || '',
           secondaryPosition: row.secondary_position || '',
           requiredEvaluations: parseInt(row.required_evaluations || '3', 10),
+          isNew: row.is_new === 'true' || row.is_new === '1' || row.is_new === 'yes',
         };
         await updateItem(`TEAM#${teamId}`, `PLAYER#${existing.id}`, updates);
         updatedIds.push(existing.id);
@@ -293,6 +296,7 @@ export async function handler(event: Event): Promise<Result> {
           primaryPosition: row.primary_position || '',
           secondaryPosition: row.secondary_position || '',
           requiredEvaluations: parseInt(row.required_evaluations || '3', 10),
+          isNew: row.is_new === 'true' || row.is_new === '1' || row.is_new === 'yes',
         });
         createdIds.push(id);
       }
@@ -317,6 +321,7 @@ export async function handler(event: Event): Promise<Result> {
     if (body.primaryPosition !== undefined) updates.primaryPosition = body.primaryPosition;
     if (body.secondaryPosition !== undefined) updates.secondaryPosition = body.secondaryPosition;
     if (body.requiredEvaluations !== undefined) updates.requiredEvaluations = parseInt(body.requiredEvaluations, 10);
+    if (body.isNew !== undefined) updates.isNew = body.isNew;
 
     await updateItem(`TEAM#${teamId}`, `PLAYER#${playerId}`, updates);
     return json(200, { updated: true });
@@ -358,7 +363,7 @@ export async function handler(event: Event): Promise<Result> {
       teamId,
       name: body.name,
       email: body.email,
-      maxPlayers: parseInt(body.maxPlayers || body.max_players || '10', 10),
+      maxPlayers: parseInt((body.maxPlayers ?? body.max_players ?? '10'), 10),
       isLead: body.isLead || false,
     });
 
@@ -394,7 +399,7 @@ export async function handler(event: Event): Promise<Result> {
         const updates: Record<string, any> = {
           name: row.name,
           email: row.email,
-          maxPlayers: parseInt(row.max_players || '10', 10),
+          maxPlayers: parseInt(row.max_players ?? '10', 10),
         };
         await updateItem(`TEAM#${teamId}`, `COACH#${existing.id}`, updates);
         updatedIds.push(existing.id);
@@ -408,7 +413,7 @@ export async function handler(event: Event): Promise<Result> {
           teamId,
           name: row.name,
           email: row.email,
-          maxPlayers: parseInt(row.max_players || '10', 10),
+          maxPlayers: parseInt(row.max_players ?? '10', 10),
           isLead: false,
         });
         createdIds.push(id);
@@ -485,6 +490,7 @@ export async function handler(event: Event): Promise<Result> {
       primaryPosition: p.primaryPosition,
       secondaryPosition: p.secondaryPosition,
       requiredEvaluations: p.requiredEvaluations || 3,
+      isNew: p.isNew || false,
     }));
 
     const coaches: Coach[] = coachItems.map((c) => ({
@@ -492,7 +498,7 @@ export async function handler(event: Event): Promise<Result> {
       teamId,
       name: c.name,
       email: c.email,
-      maxPlayers: c.maxPlayers || 10,
+      maxPlayers: c.maxPlayers ?? 10,
       isLead: c.isLead || false,
     }));
 
@@ -531,6 +537,18 @@ export async function handler(event: Event): Promise<Result> {
     });
 
     return json(201, { assigned: true });
+  }
+
+  // DELETE /assignments - Clear all assignments
+  if (method === 'DELETE' && path === '/assignments') {
+    if (!isLead) return json(403, { error: 'Only leads can manage assignments' });
+
+    const existingAssignments = await queryItems(`TEAM#${teamId}`, 'ASSIGN#');
+    for (const existing of existingAssignments) {
+      await deleteItem(`TEAM#${teamId}`, existing.SK);
+    }
+
+    return json(200, { deleted: true, count: existingAssignments.length });
   }
 
   // DELETE /assignments/:coachId/:playerId

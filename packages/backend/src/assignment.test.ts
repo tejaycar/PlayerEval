@@ -11,6 +11,7 @@ function makePlayers(count: number, requiredEvals: number = 3): Player[] {
     primaryPosition: 'QB',
     secondaryPosition: 'WR',
     requiredEvaluations: requiredEvals,
+    isNew: false,
   }));
 }
 
@@ -277,6 +278,104 @@ describe('Assignment Algorithm', () => {
       // Expect no more than 40% of any coach's load shared in a triple
       const maxCoachLoad = Math.max(...Array.from(coachPlayers.values()).map((s) => s.size));
       expect(maxTripleOverlap).toBeLessThan(maxCoachLoad * 0.5);
+    });
+  });
+
+  describe('Coach with maxPlayers=0', () => {
+    it('a coach with maxPlayers=0 gets zero assignments', () => {
+      const players = makePlayers(20, 3); // 60 required
+      const coaches = makeCoaches([
+        { maxPlayers: 10 },
+        { maxPlayers: 10 },
+        { maxPlayers: 0 },  // This coach should get nothing
+        { maxPlayers: 10 },
+        { maxPlayers: 10 },
+        { maxPlayers: 10 },
+        { maxPlayers: 10 },
+      ]);
+      // Total capacity: 60 (excluding the 0 coach). Required: 60.
+
+      const assignments = computeAssignments(players, coaches, 'team-1');
+
+      const coachCounts = new Map<string, number>();
+      for (const a of assignments) {
+        coachCounts.set(a.coachId, (coachCounts.get(a.coachId) || 0) + 1);
+      }
+
+      // The coach with maxPlayers=0 (coach-3) should have 0 assignments
+      const zeroCoach = coaches.find((c) => c.maxPlayers === 0)!;
+      expect(coachCounts.get(zeroCoach.id) || 0).toBe(0);
+    });
+
+    it('all coaches with maxPlayers=0 get no assignments even with extra capacity', () => {
+      const players = makePlayers(10, 2); // 20 required
+      const coaches = makeCoaches([
+        { maxPlayers: 0 },
+        { maxPlayers: 0 },
+        { maxPlayers: 15 },
+        { maxPlayers: 15 },
+      ]);
+      // Total capacity: 30 (only from the two active coaches). Required: 20.
+
+      const assignments = computeAssignments(players, coaches, 'team-1');
+
+      const coachCounts = new Map<string, number>();
+      for (const a of assignments) {
+        coachCounts.set(a.coachId, (coachCounts.get(a.coachId) || 0) + 1);
+      }
+
+      // Both 0-capacity coaches should have no assignments
+      const zeroCoaches = coaches.filter((c) => c.maxPlayers === 0);
+      for (const c of zeroCoaches) {
+        expect(coachCounts.get(c.id) || 0).toBe(0);
+      }
+
+      // The active coaches should have assignments
+      const activeCoaches = coaches.filter((c) => c.maxPlayers > 0);
+      for (const c of activeCoaches) {
+        expect(coachCounts.get(c.id) || 0).toBeGreaterThan(0);
+      }
+    });
+  });
+
+  describe('New player balancing', () => {
+    it('new players are distributed evenly across coaches', () => {
+      // Create a mix of new and regular players
+      const regularPlayers = makePlayers(20, 3);
+      const newPlayersList: Player[] = Array.from({ length: 10 }, (_, i) => ({
+        id: `new-player-${i + 1}`,
+        teamId: 'team-1',
+        name: `New Player ${i + 1}`,
+        number: String(100 + i + 1),
+        primaryPosition: 'QB',
+        secondaryPosition: 'WR',
+        requiredEvaluations: 3,
+        isNew: true,
+      }));
+      const allPlayers = [...regularPlayers, ...newPlayersList];
+
+      const coaches = makeCoaches(
+        Array.from({ length: 5 }, () => ({ maxPlayers: 20 }))
+      );
+      // Total capacity: 100. Required: 90.
+
+      const assignments = computeAssignments(allPlayers, coaches, 'team-1');
+
+      // Count new players per coach
+      const newPlayerIds = new Set(newPlayersList.map((p) => p.id));
+      const coachNewCounts = new Map<string, number>();
+      for (const a of assignments) {
+        if (newPlayerIds.has(a.playerId)) {
+          coachNewCounts.set(a.coachId, (coachNewCounts.get(a.coachId) || 0) + 1);
+        }
+      }
+
+      const counts = Array.from(coachNewCounts.values());
+      const min = Math.min(...counts);
+      const max = Math.max(...counts);
+
+      // New players should be balanced: max difference of 2 between any two coaches
+      expect(max - min).toBeLessThanOrEqual(2);
     });
   });
 });

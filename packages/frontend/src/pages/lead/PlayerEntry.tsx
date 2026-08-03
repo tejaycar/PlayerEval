@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { players } from '../../api';
 
 interface Player {
@@ -8,6 +8,7 @@ interface Player {
   primaryPosition: string;
   secondaryPosition: string;
   requiredEvaluations: number;
+  isNew?: boolean;
 }
 
 interface EditableRow {
@@ -16,6 +17,7 @@ interface EditableRow {
   primaryPosition: string;
   secondaryPosition: string;
   requiredEvaluations: string;
+  isNew: boolean;
 }
 
 const emptyRow: EditableRow = {
@@ -24,7 +26,11 @@ const emptyRow: EditableRow = {
   primaryPosition: '',
   secondaryPosition: '',
   requiredEvaluations: '3',
+  isNew: false,
 };
+
+type SortField = 'number' | 'name';
+type SortDirection = 'asc' | 'desc';
 
 export default function PlayerEntry() {
   const [playerList, setPlayerList] = useState<Player[]>([]);
@@ -33,12 +39,42 @@ export default function PlayerEntry() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValues, setEditValues] = useState<EditableRow>(emptyRow);
   const [newRow, setNewRow] = useState<EditableRow>({ ...emptyRow });
+  const [sortField, setSortField] = useState<SortField>('number');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
   const newRowRef = useRef<HTMLTableRowElement>(null);
   const editRowRef = useRef<HTMLTableRowElement>(null);
 
   useEffect(() => {
     loadPlayers();
   }, []);
+
+  const sortedPlayers = useMemo(() => {
+    const sorted = [...playerList].sort((a, b) => {
+      if (sortField === 'number') {
+        const numA = parseInt(a.number, 10) || 0;
+        const numB = parseInt(b.number, 10) || 0;
+        return sortDirection === 'asc' ? numA - numB : numB - numA;
+      } else {
+        const cmp = a.name.localeCompare(b.name);
+        return sortDirection === 'asc' ? cmp : -cmp;
+      }
+    });
+    return sorted;
+  }, [playerList, sortField, sortDirection]);
+
+  const handleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortField(field);
+      setSortDirection('asc');
+    }
+  };
+
+  const getSortIndicator = (field: SortField) => {
+    if (sortField !== field) return '';
+    return sortDirection === 'asc' ? ' \u25B2' : ' \u25BC';
+  };
 
   const loadPlayers = async () => {
     try {
@@ -73,7 +109,7 @@ export default function PlayerEntry() {
     if (missingHeaders.length > 0) {
       setError(
         `CSV is missing required headers: ${missingHeaders.join(', ')}. ` +
-        `Expected headers: name, number, primary_position, secondary_position, required_evaluations. ` +
+        `Expected headers: name, number, primary_position, secondary_position, required_evaluations, is_new. ` +
         `Found headers: ${headers.join(', ')}`
       );
       return;
@@ -91,7 +127,7 @@ export default function PlayerEntry() {
   };
 
   const handleDownloadTemplate = () => {
-    const csv = 'name,number,primary_position,secondary_position,required_evaluations\n';
+    const csv = 'name,number,primary_position,secondary_position,required_evaluations,is_new\n';
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -119,6 +155,7 @@ export default function PlayerEntry() {
       primaryPosition: player.primaryPosition,
       secondaryPosition: player.secondaryPosition,
       requiredEvaluations: String(player.requiredEvaluations),
+      isNew: player.isNew || false,
     });
   };
 
@@ -134,8 +171,18 @@ export default function PlayerEntry() {
         primaryPosition: editValues.primaryPosition.trim(),
         secondaryPosition: editValues.secondaryPosition.trim(),
         requiredEvaluations: editValues.requiredEvaluations,
+        isNew: editValues.isNew,
       });
       setEditingId(null);
+      await loadPlayers();
+    } catch (err: any) {
+      setError(err.message);
+    }
+  };
+
+  const handleToggleNew = async (player: Player) => {
+    try {
+      await players.update(player.id, { isNew: !player.isNew });
       await loadPlayers();
     } catch (err: any) {
       setError(err.message);
@@ -168,6 +215,7 @@ export default function PlayerEntry() {
         primaryPosition: newRow.primaryPosition.trim(),
         secondaryPosition: newRow.secondaryPosition.trim(),
         requiredEvaluations: newRow.requiredEvaluations || '3',
+        isNew: newRow.isNew,
       });
       setNewRow({ ...emptyRow });
       await loadPlayers();
@@ -225,16 +273,27 @@ export default function PlayerEntry() {
         <table className="w-full bg-white rounded-lg shadow-sm border">
           <thead className="bg-gray-50">
             <tr>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">#</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
+              <th
+                className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:text-gray-700 select-none"
+                onClick={() => handleSort('number')}
+              >
+                #{getSortIndicator('number')}
+              </th>
+              <th
+                className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:text-gray-700 select-none"
+                onClick={() => handleSort('name')}
+              >
+                Name{getSortIndicator('name')}
+              </th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Primary Pos</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Secondary Pos</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Req. Evals</th>
+              <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">New</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-200">
-            {playerList.map((player) => (
+            {sortedPlayers.map((player) => (
               <tr
                 key={player.id}
                 ref={editingId === player.id ? editRowRef : undefined}
@@ -295,6 +354,16 @@ export default function PlayerEntry() {
                         className="w-full px-2 py-1 border rounded text-sm"
                       />
                     </td>
+                    <td className="px-4 py-2 text-center">
+                      <input
+                        type="checkbox"
+                        checked={editValues.isNew}
+                        onChange={(e) => setEditValues({ ...editValues, isNew: e.target.checked })}
+                        onKeyDown={(e) => handleEditKeyDown(e, player.id)}
+                        onBlur={(e) => handleEditBlur(e, player.id)}
+                        className="w-4 h-4 text-blue-600 rounded"
+                      />
+                    </td>
                     <td className="px-4 py-2">
                       <button
                         onClick={(e) => { e.stopPropagation(); handleDelete(player.id); }}
@@ -314,6 +383,14 @@ export default function PlayerEntry() {
                     <td className="px-4 py-3 text-sm">{player.primaryPosition}</td>
                     <td className="px-4 py-3 text-sm">{player.secondaryPosition}</td>
                     <td className="px-4 py-3 text-sm">{player.requiredEvaluations}</td>
+                    <td className="px-4 py-3 text-center">
+                      <input
+                        type="checkbox"
+                        checked={player.isNew || false}
+                        onChange={(e) => { e.stopPropagation(); handleToggleNew(player); }}
+                        className="w-4 h-4 text-blue-600 rounded"
+                      />
+                    </td>
                     <td className="px-4 py-3 text-sm">
                       <button
                         onClick={(e) => { e.stopPropagation(); handleDelete(player.id); }}
@@ -387,6 +464,14 @@ export default function PlayerEntry() {
                   className="w-full px-2 py-1 border border-dashed border-gray-300 rounded text-sm bg-white placeholder-gray-400"
                 />
               </td>
+              <td className="px-4 py-2 text-center">
+                <input
+                  type="checkbox"
+                  checked={newRow.isNew}
+                  onChange={(e) => setNewRow({ ...newRow, isNew: e.target.checked })}
+                  className="w-4 h-4 text-blue-600 rounded"
+                />
+              </td>
               <td className="px-4 py-2 text-xs text-gray-400">
                 Type to add
               </td>
@@ -396,7 +481,7 @@ export default function PlayerEntry() {
       </div>
 
       <p className="mt-4 text-xs text-gray-400">
-        CSV format: name, number, primary_position, secondary_position, required_evaluations
+        CSV format: name, number, primary_position, secondary_position, required_evaluations, is_new
       </p>
     </div>
   );

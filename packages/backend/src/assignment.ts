@@ -6,12 +6,15 @@ import type { Player, Coach, Assignment } from '@player-eval/shared';
  * 2. Distributes extra eval slots evenly across players
  * 3. Loads coaches proportionally to their max capacity
  * 4. Minimizes overlap concentration across coach subsets
+ * 5. Balances new players (isNew) evenly across coaches
  *
  * Strategy:
  * - Phase 1: Fill minimum requirements. For each unfilled slot, pick the coach
  *   with the lowest capacity utilization (load/max) who minimizes overlap.
  * - Phase 2: Distribute remaining capacity evenly. Players who have fewer
  *   evaluations get priority for extras, spread across coaches proportionally.
+ * - Phase 3: Rebalance new players. If any coach has disproportionately more
+ *   new players, swap assignments to even out the distribution.
  */
 export function computeAssignments(
   players: Player[],
@@ -23,9 +26,13 @@ export function computeAssignments(
   const playerEvalCount: Map<string, number> = new Map();
   const playerAssignedCoaches: Map<string, Set<string>> = new Map();
   const coachPairOverlap: Map<string, number> = new Map();
+  const coachNewPlayerCount: Map<string, number> = new Map();
 
   // Initialize
-  coaches.forEach((c) => coachLoad.set(c.id, 0));
+  coaches.forEach((c) => {
+    coachLoad.set(c.id, 0);
+    coachNewPlayerCount.set(c.id, 0);
+  });
   players.forEach((p) => {
     playerEvalCount.set(p.id, 0);
     playerAssignedCoaches.set(p.id, new Set());
@@ -63,7 +70,8 @@ export function computeAssignments(
         coaches,
         coachLoad,
         alreadyAssigned,
-        coachPairOverlap
+        coachPairOverlap,
+        coachNewPlayerCount
       );
 
       if (!bestCoach) continue;
@@ -76,7 +84,8 @@ export function computeAssignments(
         coachLoad,
         playerEvalCount,
         playerAssignedCoaches,
-        coachPairOverlap
+        coachPairOverlap,
+        coachNewPlayerCount
       );
       progress = true;
     }
@@ -109,7 +118,8 @@ export function computeAssignments(
           coaches,
           coachLoad,
           alreadyAssigned,
-          coachPairOverlap
+          coachPairOverlap,
+          coachNewPlayerCount
         );
 
         if (!bestCoach) continue;
@@ -122,7 +132,8 @@ export function computeAssignments(
           coachLoad,
           playerEvalCount,
           playerAssignedCoaches,
-          coachPairOverlap
+          coachPairOverlap,
+          coachNewPlayerCount
         );
         extraProgress = true;
         break; // One per round for even distribution
@@ -130,7 +141,104 @@ export function computeAssignments(
     }
   }
 
+  // === Phase 3: Rebalance new players across coaches ===
+  rebalanceNewPlayers(assignments, players, coaches, coachLoad, coachNewPlayerCount, playerAssignedCoaches, playerEvalCount, coachPairOverlap, teamId);
+
   return assignments;
+}
+
+/**
+ * Phase 3: Rebalance new players so no coach has disproportionately more
+ * new players than others. This swaps assignments between coaches where possible.
+ */
+function rebalanceNewPlayers(
+  assignments: Assignment[],
+  players: Player[],
+  coaches: Coach[],
+  coachLoad: Map<string, number>,
+  coachNewPlayerCount: Map<string, number>,
+  playerAssignedCoaches: Map<string, Set<string>>,
+  playerEvalCount: Map<string, number>,
+  coachPairOverlap: Map<string, number>,
+  teamId: string
+): void {
+  const newPlayers = players.filter((p) => p.isNew);
+  if (newPlayers.length === 0) return;
+
+  // Only consider coaches with capacity > 0 (active coaches)
+  const activeCoaches = coaches.filter((c) => c.maxPlayers > 0);
+  if (activeCoaches.length === 0) return;
+
+  const playerMap = new Map(players.map((p) => [p.id, p]));
+
+  // Try up to 100 swap iterations to balance
+  for (let iter = 0; iter < 100; iter++) {
+    // Find coach with the most new players and coach with the fewest
+    let maxCoach: Coach | null = null;
+    let minCoach: Coach | null = null;
+    let maxNew = -1;
+    let minNew = Infinity;
+
+    for (const coach of activeCoaches) {
+      const load = coachLoad.get(coach.id) || 0;
+      if (load === 0) continue; // skip unloaded coaches
+      const newCount = coachNewPlayerCount.get(coach.id) || 0;
+      if (newCount > maxNew) { maxNew = newCount; maxCoach = coach; }
+      if (newCount < minNew) { minNew = newCount; minCoach = coach; }
+    }
+
+    // If the difference is 1 or less, we are balanced
+    if (!maxCoach || !minCoach || maxNew - minNew <= 1) break;
+
+    // Try to find a swap: move a new player from maxCoach to minCoach
+    // and a non-new player from minCoach to maxCoach
+    let swapped = false;
+
+    // Find a new player assigned to maxCoach but not to minCoach
+    const maxCoachAssignments = assignments.filter((a) => a.coachId === maxCoach!.id);
+    const minCoachAssignments = assignments.filter((a) => a.coachId === minCoach!.id);
+
+    for (const aMax of maxCoachAssignments) {
+      const playerMax = playerMap.get(aMax.playerId);
+      if (!playerMax || !playerMax.isNew) continue;
+      // This new player must not already be assigned to minCoach
+      if (playerAssignedCoaches.get(aMax.playerId)!.has(minCoach!.id)) continue;
+
+      // Find a non-new player assigned to minCoach but not to maxCoach
+      for (const aMin of minCoachAssignments) {
+        const playerMin = playerMap.get(aMin.playerId);
+        if (!playerMin || playerMin.isNew) continue;
+        // This non-new player must not already be assigned to maxCoach
+        if (playerAssignedCoaches.get(aMin.playerId)!.has(maxCoach!.id)) continue;
+
+        // Perform the swap:
+        // Remove new player from maxCoach, assign to minCoach
+        // Remove non-new player from minCoach, assign to maxCoach
+        const idxMax = assignments.indexOf(aMax);
+        const idxMin = assignments.indexOf(aMin);
+
+        // Swap coach assignments
+        assignments[idxMax] = { teamId, coachId: minCoach!.id, playerId: aMax.playerId };
+        assignments[idxMin] = { teamId, coachId: maxCoach!.id, playerId: aMin.playerId };
+
+        // Update tracking: playerAssignedCoaches
+        playerAssignedCoaches.get(aMax.playerId)!.delete(maxCoach!.id);
+        playerAssignedCoaches.get(aMax.playerId)!.add(minCoach!.id);
+        playerAssignedCoaches.get(aMin.playerId)!.delete(minCoach!.id);
+        playerAssignedCoaches.get(aMin.playerId)!.add(maxCoach!.id);
+
+        // Update new player counts
+        coachNewPlayerCount.set(maxCoach!.id, (coachNewPlayerCount.get(maxCoach!.id) || 0) - 1);
+        coachNewPlayerCount.set(minCoach!.id, (coachNewPlayerCount.get(minCoach!.id) || 0) + 1);
+
+        swapped = true;
+        break;
+      }
+      if (swapped) break;
+    }
+
+    if (!swapped) break; // No valid swap found, stop
+  }
 }
 
 function assignCoachToPlayer(
@@ -141,7 +249,8 @@ function assignCoachToPlayer(
   coachLoad: Map<string, number>,
   playerEvalCount: Map<string, number>,
   playerAssignedCoaches: Map<string, Set<string>>,
-  coachPairOverlap: Map<string, number>
+  coachPairOverlap: Map<string, number>,
+  coachNewPlayerCount: Map<string, number>
 ): void {
   const alreadyAssigned = playerAssignedCoaches.get(player.id)!;
 
@@ -153,6 +262,10 @@ function assignCoachToPlayer(
 
   coachLoad.set(coach.id, (coachLoad.get(coach.id) || 0) + 1);
   playerEvalCount.set(player.id, (playerEvalCount.get(player.id) || 0) + 1);
+
+  if (player.isNew) {
+    coachNewPlayerCount.set(coach.id, (coachNewPlayerCount.get(coach.id) || 0) + 1);
+  }
 
   // Update pair overlap counts
   for (const existingCoachId of alreadyAssigned) {
@@ -168,7 +281,8 @@ function findBestCoach(
   coaches: Coach[],
   coachLoad: Map<string, number>,
   alreadyAssigned: Set<string>,
-  coachPairOverlap: Map<string, number>
+  coachPairOverlap: Map<string, number>,
+  coachNewPlayerCount: Map<string, number>
 ): Coach | null {
   let bestCoach: Coach | null = null;
   let bestScore = Infinity;
@@ -191,10 +305,15 @@ function findBestCoach(
       overlapScore += coachPairOverlap.get(pairKey) || 0;
     }
 
-    // Score: primarily minimize overlap, then prefer lower utilization ratio
-    // Overlap is weighted heavily to maintain the "minimize grouping" property
-    // Utilization ensures proportional loading (a coach at 50% of 10 = same priority as 50% of 15)
-    const score = overlapScore * 10000 + utilization * 1000;
+    // New player balance: if this player is new, prefer coaches with fewer new players
+    let newPlayerPenalty = 0;
+    if (player.isNew) {
+      newPlayerPenalty = (coachNewPlayerCount.get(coach.id) || 0) * 500;
+    }
+
+    // Score: primarily minimize overlap, then prefer lower utilization ratio,
+    // then balance new players
+    const score = overlapScore * 10000 + utilization * 1000 + newPlayerPenalty;
 
     if (score < bestScore) {
       bestScore = score;
