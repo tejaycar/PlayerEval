@@ -11,6 +11,7 @@ interface Player {
 interface Coach {
   id: string;
   name: string;
+  email: string;
   maxPlayers: number;
 }
 
@@ -92,6 +93,87 @@ export default function CoachAssignment() {
     return assignmentList.filter((a) => a.coachId === coachId).length;
   };
 
+  const getPlayerCount = (playerId: string) => {
+    return assignmentList.filter((a) => a.playerId === playerId).length;
+  };
+
+  const handleDownloadCSV = () => {
+    // CSV format: player_number,player_name,coach_email,coach_name
+    const rows = assignmentList.map((a) => {
+      const player = playerList.find((p) => p.id === a.playerId);
+      const coach = coachList.find((c) => c.id === a.coachId);
+      return `${player?.number || ''},${player?.name || ''},${coach?.email || ''},${coach?.name || ''}`;
+    });
+    const csv = 'player_number,player_name,coach_email,coach_name\n' + rows.join('\n') + '\n';
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'assignments.csv';
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 0);
+  };
+
+  const handleUploadCSV = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const text = await file.text();
+    const lines = text.trim().split('\n');
+    const headers = lines[0].split(',').map((h) => h.trim().toLowerCase());
+
+    if (!headers.includes('player_number') || !headers.includes('coach_email')) {
+      setError(
+        `CSV must have headers: player_number, coach_email. ` +
+        `Found: ${headers.join(', ')}`
+      );
+      e.target.value = '';
+      return;
+    }
+
+    const pNumIdx = headers.indexOf('player_number');
+    const cEmailIdx = headers.indexOf('coach_email');
+
+    // Parse rows and map to IDs
+    const newAssignments: AssignmentData[] = [];
+    const errors: string[] = [];
+
+    for (let i = 1; i < lines.length; i++) {
+      const values = lines[i].split(',').map((v) => v.trim());
+      const playerNum = values[pNumIdx];
+      const coachEmail = values[cEmailIdx];
+      if (!playerNum || !coachEmail) continue;
+
+      const player = playerList.find((p) => p.number === playerNum);
+      const coach = coachList.find((c) => c.email.toLowerCase() === coachEmail.toLowerCase());
+
+      if (!player) { errors.push(`Row ${i + 1}: player #${playerNum} not found`); continue; }
+      if (!coach) { errors.push(`Row ${i + 1}: coach ${coachEmail} not found`); continue; }
+
+      newAssignments.push({ coachId: coach.id, playerId: player.id });
+    }
+
+    if (errors.length > 0) {
+      setError(`CSV upload errors:\n${errors.slice(0, 5).join('\n')}${errors.length > 5 ? `\n...and ${errors.length - 5} more` : ''}`);
+      e.target.value = '';
+      return;
+    }
+
+    // Clear existing and set new assignments
+    try {
+      await assignments.clearAll();
+      for (const a of newAssignments) {
+        await assignments.add(a.coachId, a.playerId);
+      }
+      setAssignmentList(newAssignments);
+      setError('');
+    } catch (err: any) {
+      setError(err.message);
+    }
+
+    e.target.value = '';
+  };
+
   if (loading) return <div className="text-center py-8">Loading...</div>;
 
   return (
@@ -99,6 +181,16 @@ export default function CoachAssignment() {
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-2xl font-bold">Coach Assignments</h2>
         <div className="flex gap-3">
+          <button
+            onClick={handleDownloadCSV}
+            className="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700 text-sm font-medium"
+          >
+            Download CSV
+          </button>
+          <label className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 cursor-pointer text-sm font-medium">
+            Upload CSV
+            <input type="file" accept=".csv" onChange={handleUploadCSV} className="hidden" />
+          </label>
           <button
             onClick={handleClearAssignments}
             className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700 text-sm font-medium"
@@ -156,6 +248,9 @@ export default function CoachAssignment() {
                     </div>
                   </th>
                 ))}
+                <th className="px-3 py-2 text-center font-medium text-gray-500">
+                  Total
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
@@ -174,6 +269,11 @@ export default function CoachAssignment() {
                       />
                     </td>
                   ))}
+                  <td className="px-3 py-2 text-center font-semibold">
+                    <span className={getPlayerCount(player.id) < player.requiredEvaluations ? 'text-red-600' : 'text-green-600'}>
+                      {getPlayerCount(player.id)}/{player.requiredEvaluations}
+                    </span>
+                  </td>
                 </tr>
               ))}
             </tbody>
