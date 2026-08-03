@@ -92,6 +92,10 @@ export default function CoachAssignment() {
     return assignmentList.filter((a) => a.coachId === coachId).length;
   };
 
+  const getPlayerCount = (playerId: string) => {
+    return assignmentList.filter((a) => a.playerId === playerId).length;
+  };
+
   if (loading) return <div className="text-center py-8">Loading...</div>;
 
   return (
@@ -156,6 +160,9 @@ export default function CoachAssignment() {
                     </div>
                   </th>
                 ))}
+                <th className="px-3 py-2 text-center font-medium text-gray-500">
+                  Total
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
@@ -174,6 +181,11 @@ export default function CoachAssignment() {
                       />
                     </td>
                   ))}
+                  <td className="px-3 py-2 text-center font-semibold">
+                    <span className={getPlayerCount(player.id) < player.requiredEvaluations ? 'text-red-600' : 'text-green-600'}>
+                      {getPlayerCount(player.id)}/{player.requiredEvaluations}
+                    </span>
+                  </td>
                 </tr>
               ))}
             </tbody>
