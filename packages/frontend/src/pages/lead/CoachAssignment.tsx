@@ -26,6 +26,8 @@ export default function CoachAssignment() {
   const [assignmentList, setAssignmentList] = useState<AssignmentData[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [sortBy, setSortBy] = useState<'number' | 'name'>('number');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
 
   useEffect(() => {
     loadData();
@@ -96,6 +98,24 @@ export default function CoachAssignment() {
   const getPlayerCount = (playerId: string) => {
     return assignmentList.filter((a) => a.playerId === playerId).length;
   };
+
+  const toggleSort = (field: 'number' | 'name') => {
+    if (sortBy === field) {
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortBy(field);
+      setSortDir('asc');
+    }
+  };
+
+  const sortedPlayers = [...playerList].sort((a, b) => {
+    if (sortBy === 'number') {
+      const diff = parseInt(a.number, 10) - parseInt(b.number, 10);
+      return sortDir === 'asc' ? diff : -diff;
+    }
+    const cmp = a.name.localeCompare(b.name);
+    return sortDir === 'asc' ? cmp : -cmp;
+  });
 
   const handleDownloadCSV = () => {
     // CSV format: player_number,player_name,coach_email,coach_name
@@ -238,7 +258,13 @@ export default function CoachAssignment() {
             <thead className="bg-gray-50">
               <tr>
                 <th className="px-3 py-2 text-left font-medium text-gray-500 sticky left-0 bg-gray-50">
-                  Player
+                  <span className="cursor-pointer hover:text-gray-700" onClick={() => toggleSort('number')}>
+                    #{sortBy === 'number' && (sortDir === 'asc' ? '▲' : '▼')}
+                  </span>
+                  {' '}
+                  <span className="cursor-pointer hover:text-gray-700" onClick={() => toggleSort('name')}>
+                    Name{sortBy === 'name' && (sortDir === 'asc' ? '▲' : '▼')}
+                  </span>
                 </th>
                 {coachList.map((coach) => (
                   <th key={coach.id} className="px-3 py-2 text-center font-medium text-gray-500">
@@ -254,7 +280,7 @@ export default function CoachAssignment() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
-              {playerList.map((player) => (
+              {sortedPlayers.map((player) => (
                 <tr key={player.id} className="hover:bg-gray-50">
                   <td className="px-3 py-2 font-medium sticky left-0 bg-white">
                     #{player.number} {player.name}

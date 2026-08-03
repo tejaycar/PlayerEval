@@ -33,6 +33,8 @@ export default function RatePlayers() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [localRatings, setLocalRatings] = useState<Record<string, Record<RatingField, string>>>({});
+  const [sortBy, setSortBy] = useState<'number' | 'name'>('number');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
   const savingRef = useRef<Record<string, boolean>>({});
 
   useEffect(() => {
@@ -109,6 +111,24 @@ export default function RatePlayers() {
     }, 0);
   };
 
+  const toggleSort = (field: 'number' | 'name') => {
+    if (sortBy === field) {
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortBy(field);
+      setSortDir('asc');
+    }
+  };
+
+  const sortedPlayers = [...players].sort((a, b) => {
+    if (sortBy === 'number') {
+      const diff = parseInt(a.number, 10) - parseInt(b.number, 10);
+      return sortDir === 'asc' ? diff : -diff;
+    }
+    const cmp = a.name.localeCompare(b.name);
+    return sortDir === 'asc' ? cmp : -cmp;
+  });
+
   if (loading) return <div className="text-center py-8">Loading your players...</div>;
 
   return (
@@ -128,8 +148,12 @@ export default function RatePlayers() {
           <table className="w-full bg-white rounded-lg shadow-sm border">
             <thead className="bg-gray-50">
               <tr>
-                <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">Player Name</th>
-                <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">#</th>
+                <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:text-gray-700" onClick={() => toggleSort('name')}>
+                  Player Name {sortBy === 'name' && (sortDir === 'asc' ? '▲' : '▼')}
+                </th>
+                <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:text-gray-700" onClick={() => toggleSort('number')}>
+                  # {sortBy === 'number' && (sortDir === 'asc' ? '▲' : '▼')}
+                </th>
                 <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">Primary Pos</th>
                 <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase">Secondary Pos</th>
                 {RATING_FIELDS.map(({ key, label }) => (
@@ -139,7 +163,7 @@ export default function RatePlayers() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
-              {players.map((player) => (
+              {sortedPlayers.map((player) => (
                 <tr key={player.id} className="hover:bg-gray-50">
                   <td className="px-3 py-2 text-sm font-medium">{player.name}</td>
                   <td className="px-3 py-2 text-sm text-gray-500">{player.number}</td>
