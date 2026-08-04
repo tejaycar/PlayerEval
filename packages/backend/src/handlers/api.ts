@@ -49,7 +49,7 @@ export async function handler(event: Event): Promise<Result> {
     // Find coach by email in the team
     const coaches = await queryItems(`TEAM#${teamId}`, 'COACH#');
     const coach = coaches.find((c) => c.email === email);
-    if (!coach) return json(404, { error: 'Coach not found with this email' });
+    if (!coach) return json(422, { error: 'Coach not found with this email' });
 
     const token = await sendMagicLink(email, teamId);
     return json(200, { message: 'Magic link sent', token: process.env.BYPASS_AUTH === 'true' ? token : undefined });
@@ -71,7 +71,7 @@ export async function handler(event: Event): Promise<Result> {
     const teamId = authItem.teamId;
     const coaches = await queryItems(`TEAM#${teamId}`, 'COACH#');
     const coach = coaches.find((c) => c.email === email);
-    if (!coach) return json(404, { error: 'Coach not found' });
+    if (!coach) return json(422, { error: 'Coach not found' });
 
     const jwtPayload: JWTPayload = {
       coachId: coach.id,
@@ -93,12 +93,12 @@ export async function handler(event: Event): Promise<Result> {
     // In production we'd use a GSI, but for now query all teams
     // Actually let's store invite codes with a known PK
     const inviteItem = await getItem(`INVITE#${inviteCode}`, 'META');
-    if (!inviteItem) return json(404, { error: 'Invalid invite code' });
+    if (!inviteItem) return json(422, { error: 'Invalid invite code' });
 
     const teamId = inviteItem.teamId;
     const coaches = await queryItems(`TEAM#${teamId}`, 'COACH#');
     const coach = coaches.find((c) => c.email === email);
-    if (!coach) return json(404, { error: 'Coach email not found. Ask your lead to add you first.' });
+    if (!coach) return json(422, { error: 'Coach email not found. Ask your lead to add you first.' });
 
     const token = await sendMagicLink(email, teamId);
     return json(200, { message: 'Magic link sent', token: process.env.BYPASS_AUTH === 'true' ? token : undefined });
@@ -455,7 +455,7 @@ export async function handler(event: Event): Promise<Result> {
   if (method === 'GET' && path === '/coaches/invite-link') {
     if (!isLead) return json(403, { error: 'Only leads can get invite link' });
     const teamMeta = await getItem(`TEAM#${teamId}`, 'META');
-    if (!teamMeta) return json(404, { error: 'Team not found' });
+    if (!teamMeta) return json(422, { error: 'Team not found' });
 
     const baseUrl = process.env.BASE_URL || 'http://localhost:5173';
     const link = `${baseUrl}/signup?invite=${teamMeta.inviteCode}`;
