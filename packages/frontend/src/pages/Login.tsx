@@ -1,13 +1,17 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { auth, setToken, setStoredUser } from '../api';
 
 export default function Login() {
+  const [searchParams] = useSearchParams();
   const [email, setEmail] = useState('');
-  const [teamId, setTeamId] = useState('');
-  const [sent, setSent] = useState(false);
+  const [pin, setPin] = useState('');
+  const [inviteCode, setInviteCode] = useState(searchParams.get('invite') || '');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [mustChangePin, setMustChangePin] = useState(false);
+  const [newPin, setNewPin] = useState('');
+  const [confirmPin, setConfirmPin] = useState('');
   const navigate = useNavigate();
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -15,19 +19,18 @@ export default function Login() {
     setError('');
     setLoading(true);
     try {
-      const result = await auth.requestLink(email, teamId);
-      // In bypass mode, the API returns the token directly - auto-verify
-      if (result.token) {
-        const verifyResult = await auth.verify(result.token);
-        setToken(verifyResult.token);
-        setStoredUser(verifyResult.coach);
-        if (verifyResult.coach.isLead) {
+      const result = await auth.login(email, pin, inviteCode);
+      if (result.mustChangePin) {
+        setToken(result.token);
+        setMustChangePin(true);
+      } else {
+        setToken(result.token);
+        setStoredUser(result.coach);
+        if (result.coach.isLead) {
           navigate('/lead/players', { replace: true });
         } else {
           navigate('/coach/rate', { replace: true });
         }
-      } else {
-        setSent(true);
       }
     } catch (err: any) {
       setError(err.message);
@@ -36,15 +39,78 @@ export default function Login() {
     }
   };
 
-  if (sent) {
+  const handleChangePin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    if (newPin !== confirmPin) {
+      setError('PINs do not match');
+      return;
+    }
+    if (!newPin) {
+      setError('Please enter a new PIN');
+      return;
+    }
+    setLoading(true);
+    try {
+      const result = await auth.changePin(pin, newPin);
+      setToken(result.token);
+      setStoredUser(result.coach);
+      if (result.coach.isLead) {
+        navigate('/lead/players', { replace: true });
+      } else {
+        navigate('/coach/rate', { replace: true });
+      }
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (mustChangePin) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="bg-white p-8 rounded-lg shadow-md max-w-md w-full text-center">
-          <h2 className="text-2xl font-bold mb-4">Check your email!</h2>
-          <p className="text-gray-600">
-            We sent a login link to <strong>{email}</strong>. Click the link to sign in.
+        <div className="bg-white p-8 rounded-lg shadow-md max-w-md w-full">
+          <h2 className="text-2xl font-bold mb-2 text-center">Change PIN</h2>
+          <p className="text-sm text-gray-500 text-center mb-6">
+            Your PIN is temporary. Please choose a new PIN to continue.
           </p>
-          <p className="text-sm text-gray-400 mt-4">Link expires in 15 minutes.</p>
+          {error && (
+            <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-2 rounded mb-4">
+              {error}
+            </div>
+          )}
+          <form onSubmit={handleChangePin} className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">New PIN</label>
+              <input
+                type="password"
+                value={newPin}
+                onChange={(e) => setNewPin(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                placeholder="Enter new PIN"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Confirm New PIN</label>
+              <input
+                type="password"
+                value={confirmPin}
+                onChange={(e) => setConfirmPin(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                placeholder="Confirm new PIN"
+                required
+              />
+            </div>
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full bg-blue-600 text-white py-2 px-4 rounded hover:bg-blue-700 font-medium disabled:opacity-50"
+            >
+              {loading ? 'Updating...' : 'Update PIN'}
+            </button>
+          </form>
         </div>
       </div>
     );
@@ -72,14 +138,24 @@ export default function Login() {
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Team ID</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">PIN</label>
+            <input
+              type="password"
+              value={pin}
+              onChange={(e) => setPin(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              placeholder="Enter PIN"
+              required
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Invite Code</label>
             <input
               type="text"
-              value={teamId}
-              onChange={(e) => setTeamId(e.target.value)}
+              value={inviteCode}
+              onChange={(e) => setInviteCode(e.target.value)}
               className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              placeholder="Your team ID"
-              required
+              placeholder="Invite code (from your team lead)"
             />
           </div>
           <button
@@ -90,14 +166,9 @@ export default function Login() {
             {loading ? 'Signing in...' : 'Sign In'}
           </button>
         </form>
-        <div className="mt-4 text-center space-y-2">
-          <p className="text-sm text-gray-500">
-            Have an invite link? <a href="/signup" className="text-blue-600 hover:underline">Sign up here</a>
-          </p>
-          <p className="text-sm text-gray-500">
-            New team? <a href="/setup" className="text-blue-600 hover:underline">Create a team</a>
-          </p>
-        </div>
+        <p className="mt-4 text-center text-sm text-gray-500">
+          New team? <a href="/setup" className="text-blue-600 hover:underline">Create a team</a>
+        </p>
       </div>
     </div>
   );

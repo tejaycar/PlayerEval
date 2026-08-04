@@ -65,9 +65,8 @@ async function request(method: string, path: string, body?: any): Promise<any> {
 
 // Auth
 export const auth = {
-  requestLink: (email: string, teamId: string) => request('POST', '/auth/request', { email, teamId }),
-  verify: (token: string) => request('GET', `/auth/verify?token=${token}`),
-  signup: (email: string, inviteCode: string) => request('POST', '/auth/signup', { email, inviteCode }),
+  login: (email: string, pin: string, inviteCode: string) => request('POST', '/auth/login', { email, pin, inviteCode }),
+  changePin: (currentPin: string, newPin: string) => request('POST', '/auth/change-pin', { currentPin, newPin }),
 };
 
 // Team
@@ -93,6 +92,7 @@ export const coaches = {
   update: (id: string, data: any) => request('PUT', `/coaches/${id}`, data),
   delete: (id: string) => request('DELETE', `/coaches/${id}`),
   getInviteLink: () => request('GET', '/coaches/invite-link'),
+  resetPin: (id: string) => request('POST', `/coaches/${id}/reset-pin`),
 };
 
 // Assignments

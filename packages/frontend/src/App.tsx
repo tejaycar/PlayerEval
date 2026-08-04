@@ -3,9 +3,7 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import { getToken, getStoredUser } from './api';
 import Layout from './components/Layout';
 import Login from './pages/Login';
-import Signup from './pages/Signup';
 import Setup from './pages/Setup';
-import AuthVerify from './pages/AuthVerify';
 import PlayerEntry from './pages/lead/PlayerEntry';
 import CoachEntry from './pages/lead/CoachEntry';
 import PlayerSummary from './pages/lead/PlayerSummary';
@@ -32,9 +30,8 @@ export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
-      <Route path="/signup" element={<Signup />} />
       <Route path="/setup" element={<Setup />} />
-      <Route path="/auth/verify" element={<AuthVerify />} />
+      <Route path="/signup" element={<Navigate to="/login" replace />} />
       
       {/* Lead routes */}
       <Route path="/lead" element={<ProtectedRoute requireLead><Layout /></ProtectedRoute>}>
