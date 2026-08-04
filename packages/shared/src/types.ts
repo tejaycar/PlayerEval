@@ -26,6 +26,8 @@ export interface Coach {
   email: string;
   maxPlayers: number; // max # of players this coach evaluates
   isLead: boolean;
+  pin: string;
+  pinIsTemporary: boolean;
 }
 
 export interface Evaluation {
@@ -50,12 +52,6 @@ export interface Assignment {
 }
 
 // === Auth Types ===
-
-export interface AuthToken {
-  email: string;
-  token: string;
-  expiresAt: string;
-}
 
 export interface JWTPayload {
   coachId: string;

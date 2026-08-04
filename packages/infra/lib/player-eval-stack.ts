@@ -7,7 +7,6 @@ import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as s3deploy from 'aws-cdk-lib/aws-s3-deployment';
 import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
 import * as origins from 'aws-cdk-lib/aws-cloudfront-origins';
-import * as iam from 'aws-cdk-lib/aws-iam';
 import { Construct } from 'constructs';
 import * as path from 'path';
 
@@ -51,20 +50,11 @@ export class PlayerEvalStack extends cdk.Stack {
         BASE_URL: '', // Will be set after CloudFront is created
         NODE_ENV: isProduction ? 'production' : 'development',
         AWS_REGION_NAME: 'us-east-2',
-        SES_FROM_EMAIL: 'tejaycar@gmail.com',
       },
     });
 
     // Grant DynamoDB access
     table.grantReadWriteData(apiFunction);
-
-    // Grant SES access
-    apiFunction.addToRolePolicy(
-      new iam.PolicyStatement({
-        actions: ['ses:SendEmail', 'ses:SendRawEmail'],
-        resources: ['*'],
-      })
-    );
 
     // === API Gateway HTTP API ===
     const httpApi = new apigatewayv2.HttpApi(this, 'HttpApi', {

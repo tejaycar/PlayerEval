@@ -1,7 +1,7 @@
 import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda';
 import { v4 as uuidv4 } from 'uuid';
 import { putItem, getItem, queryItems, deleteItem, batchPutItems, updateItem } from '../db';
-import { authenticateRequest, sendMagicLink, verifyMagicToken, issueJWT } from '../auth';
+import { authenticateRequest, issueJWT, generatePin, verifyPin } from '../auth';
 import { computeAssignments } from '../assignment';
 import type { Player, Coach, Evaluation, JWTPayload } from '@player-eval/shared';
 
@@ -41,37 +41,21 @@ export async function handler(event: Event): Promise<Result> {
 
   // === Public routes (no auth required) ===
 
-  // POST /auth/request - Request magic link
-  if (method === 'POST' && path === '/auth/request') {
-    const { email, teamId } = parseBody(event);
-    if (!email) return json(400, { error: 'Email required' });
+  // POST /auth/login - Login with email + PIN + invite code
+  if (method === 'POST' && path === '/auth/login') {
+    const { email, pin, inviteCode } = parseBody(event);
+    if (!email || !pin || !inviteCode) return json(400, { error: 'email, pin, and inviteCode are required' });
 
-    // Find coach by email in the team
+    // Look up team from invite code
+    const inviteItem = await getItem(`INVITE#${inviteCode}`, 'META');
+    if (!inviteItem) return json(422, { error: 'Invalid invite code' });
+
+    const teamId = inviteItem.teamId;
     const coaches = await queryItems(`TEAM#${teamId}`, 'COACH#');
     const coach = coaches.find((c) => c.email === email);
     if (!coach) return json(422, { error: 'Coach not found with this email' });
 
-    const token = await sendMagicLink(email, teamId);
-    return json(200, { message: 'Magic link sent', token: process.env.BYPASS_AUTH === 'true' ? token : undefined });
-  }
-
-  // GET /auth/verify?token=xxx - Verify magic link token
-  if (method === 'GET' && path === '/auth/verify') {
-    const token = event.queryStringParameters?.token;
-    if (!token) return json(400, { error: 'Token required' });
-
-    const email = await verifyMagicToken(token);
-    if (!email) return json(401, { error: 'Invalid or expired token' });
-
-    // Find the coach across all teams (look up by GSI)
-    // For simplicity, we stored teamId in the auth token
-    const authItem = await getItem(`AUTH#${token}`, 'TOKEN');
-    if (!authItem) return json(401, { error: 'Token not found' });
-
-    const teamId = authItem.teamId;
-    const coaches = await queryItems(`TEAM#${teamId}`, 'COACH#');
-    const coach = coaches.find((c) => c.email === email);
-    if (!coach) return json(422, { error: 'Coach not found' });
+    if (!verifyPin(coach.pin, pin)) return json(401, { error: 'Invalid PIN' });
 
     const jwtPayload: JWTPayload = {
       coachId: coach.id,
@@ -81,32 +65,17 @@ export async function handler(event: Event): Promise<Result> {
     };
 
     const jwt = issueJWT(jwtPayload);
+
+    if (coach.pinIsTemporary) {
+      return json(200, { token: jwt, mustChangePin: true, coach: { id: coach.id, name: coach.name, isLead: coach.isLead, teamId } });
+    }
+
     return json(200, { token: jwt, coach: { id: coach.id, name: coach.name, isLead: coach.isLead, teamId } });
-  }
-
-  // POST /auth/signup - Coach signup via invite link
-  if (method === 'POST' && path === '/auth/signup') {
-    const { email, inviteCode } = parseBody(event);
-    if (!email || !inviteCode) return json(400, { error: 'Email and invite code required' });
-
-    // Find team by invite code (scan - ok for small dataset)
-    // In production we'd use a GSI, but for now query all teams
-    // Actually let's store invite codes with a known PK
-    const inviteItem = await getItem(`INVITE#${inviteCode}`, 'META');
-    if (!inviteItem) return json(422, { error: 'Invalid invite code' });
-
-    const teamId = inviteItem.teamId;
-    const coaches = await queryItems(`TEAM#${teamId}`, 'COACH#');
-    const coach = coaches.find((c) => c.email === email);
-    if (!coach) return json(422, { error: 'Coach email not found. Ask your lead to add you first.' });
-
-    const token = await sendMagicLink(email, teamId);
-    return json(200, { message: 'Magic link sent', token: process.env.BYPASS_AUTH === 'true' ? token : undefined });
   }
 
   // POST /setup - Create a new team + lead coach (one-time setup, no auth required)
   if (method === 'POST' && path === '/setup') {
-    const { teamName, leadName, leadEmail } = parseBody(event);
+    const { teamName, leadName, leadEmail, leadPin } = parseBody(event);
     if (!teamName || !leadName || !leadEmail) {
       return json(400, { error: 'teamName, leadName, and leadEmail are required' });
     }
@@ -133,7 +102,8 @@ export async function handler(event: Event): Promise<Result> {
       teamId,
     });
 
-    // Create lead coach
+    // Create lead coach with PIN
+    const pin = leadPin || generatePin();
     await putItem({
       PK: `TEAM#${teamId}`,
       SK: `COACH#${coachId}`,
@@ -143,6 +113,8 @@ export async function handler(event: Event): Promise<Result> {
       email: leadEmail,
       maxPlayers: 20,
       isLead: true,
+      pin,
+      pinIsTemporary: !leadPin,
     });
 
     // Issue JWT directly
@@ -174,6 +146,32 @@ export async function handler(event: Event): Promise<Result> {
   if (!user) return json(401, { error: 'Unauthorized' });
 
   const { teamId, coachId, isLead } = user;
+
+  // POST /auth/change-pin - Change PIN (requires auth)
+  if (method === 'POST' && path === '/auth/change-pin') {
+    const { currentPin, newPin } = parseBody(event);
+    if (!currentPin || !newPin) return json(400, { error: 'currentPin and newPin are required' });
+
+    // Get coach record
+    const coachRecord = await getItem(`TEAM#${teamId}`, `COACH#${coachId}`);
+    if (!coachRecord) return json(422, { error: 'Coach not found' });
+
+    if (!verifyPin(coachRecord.pin, currentPin)) return json(401, { error: 'Current PIN is incorrect' });
+
+    // Update PIN
+    await updateItem(`TEAM#${teamId}`, `COACH#${coachId}`, { pin: newPin, pinIsTemporary: false });
+
+    // Issue a new JWT
+    const jwtPayload: JWTPayload = {
+      coachId,
+      teamId,
+      email: user.email,
+      isLead,
+    };
+    const newToken = issueJWT(jwtPayload);
+
+    return json(200, { token: newToken });
+  }
 
   // === Team routes ===
 
@@ -340,13 +338,20 @@ export async function handler(event: Event): Promise<Result> {
   // GET /coaches
   if (method === 'GET' && path === '/coaches') {
     const items = await queryItems(`TEAM#${teamId}`, 'COACH#');
-    const coaches = items.map((item) => ({
-      id: item.id,
-      name: item.name,
-      email: item.email,
-      maxPlayers: item.maxPlayers,
-      isLead: item.isLead || false,
-    }));
+    const coaches = items.map((item) => {
+      const coach: any = {
+        id: item.id,
+        name: item.name,
+        email: item.email,
+        maxPlayers: item.maxPlayers,
+        isLead: item.isLead || false,
+      };
+      if (isLead) {
+        coach.pin = item.pin;
+        coach.pinIsTemporary = item.pinIsTemporary;
+      }
+      return coach;
+    });
     return json(200, { coaches });
   }
 
@@ -355,6 +360,7 @@ export async function handler(event: Event): Promise<Result> {
     if (!isLead) return json(403, { error: 'Only leads can add coaches' });
     const body = parseBody(event);
     const id = uuidv4();
+    const pin = generatePin();
 
     await putItem({
       PK: `TEAM#${teamId}`,
@@ -365,9 +371,11 @@ export async function handler(event: Event): Promise<Result> {
       email: body.email,
       maxPlayers: parseInt((body.maxPlayers ?? body.max_players ?? '10'), 10),
       isLead: body.isLead || false,
+      pin,
+      pinIsTemporary: true,
     });
 
-    return json(201, { id });
+    return json(201, { id, pin });
   }
 
   // POST /coaches/upload - Bulk upload coaches (upsert by email)
@@ -406,6 +414,7 @@ export async function handler(event: Event): Promise<Result> {
       } else {
         // Create new coach
         const id = uuidv4();
+        const pin = generatePin();
         items.push({
           PK: `TEAM#${teamId}`,
           SK: `COACH#${id}`,
@@ -415,6 +424,8 @@ export async function handler(event: Event): Promise<Result> {
           email: row.email,
           maxPlayers: parseInt(row.max_players ?? '10', 10),
           isLead: false,
+          pin,
+          pinIsTemporary: true,
         });
         createdIds.push(id);
       }
@@ -425,6 +436,17 @@ export async function handler(event: Event): Promise<Result> {
     }
 
     return json(201, { count: createdIds.length + updatedIds.length, created: createdIds, updated: updatedIds });
+  }
+
+  // POST /coaches/:id/reset-pin - Reset a coach's PIN (lead only)
+  if (method === 'POST' && path.match(/^\/coaches\/[\w-]+\/reset-pin$/)) {
+    if (!isLead) return json(403, { error: 'Only leads can reset PINs' });
+    const coachIdToReset = path.split('/')[2];
+    const pin = generatePin();
+
+    await updateItem(`TEAM#${teamId}`, `COACH#${coachIdToReset}`, { pin, pinIsTemporary: true });
+
+    return json(200, { pin });
   }
 
   // PUT /coaches/:id
@@ -500,6 +522,8 @@ export async function handler(event: Event): Promise<Result> {
       email: c.email,
       maxPlayers: c.maxPlayers ?? 10,
       isLead: c.isLead || false,
+      pin: c.pin || '',
+      pinIsTemporary: c.pinIsTemporary || false,
     }));
 
     const newAssignments = computeAssignments(players, coaches, teamId);
