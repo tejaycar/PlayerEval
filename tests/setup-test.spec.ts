@@ -8,6 +8,8 @@ test('setup flow works end-to-end', async ({ page }) => {
   await page.fill('input[placeholder*="Wildcats"]', 'Test Eagles');
   await page.fill('input[placeholder*="full name"]', 'Coach Test');
   await page.fill('input[placeholder*="you@"]', 'test-setup@example.com');
+  await page.fill('input[placeholder="Choose a PIN"]', '1234');
+  await page.fill('input[placeholder="Confirm PIN"]', '1234');
   await page.click('button:has-text("Create Team")');
 
   // Should redirect to lead dashboard

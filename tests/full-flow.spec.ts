@@ -63,6 +63,7 @@ test.describe('Full E2E Flow - 45 Players, 16 Coaches, Assignments, Evaluations'
         teamName: `E2E Test Team ${uniqueSuffix}`,
         leadName: 'E2E Lead',
         leadEmail: `e2e-lead-${uniqueSuffix}@test.com`,
+        leadPin: '1234',
       }),
     });
     expect(setupRes.ok).toBeTruthy();

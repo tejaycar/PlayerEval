@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { auth, setToken, setStoredUser } from '../api';
+import { setToken, setStoredUser } from '../api';
 
 // Setup endpoint creates a team + lead coach in one step
-async function setupTeam(data: { teamName: string; leadName: string; leadEmail: string }) {
+async function setupTeam(data: { teamName: string; leadName: string; leadEmail: string; leadPin: string }) {
   const res = await fetch('/api/setup', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -19,6 +19,8 @@ export default function Setup() {
   const [teamName, setTeamName] = useState('');
   const [leadName, setLeadName] = useState('');
   const [leadEmail, setLeadEmail] = useState('');
+  const [leadPin, setLeadPin] = useState('');
+  const [confirmPin, setConfirmPin] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -27,7 +29,17 @@ export default function Setup() {
     setError('');
     setLoading(true);
     try {
-      const result = await setupTeam({ teamName, leadName, leadEmail });
+      if (leadPin !== confirmPin) {
+        setError('PINs do not match');
+        setLoading(false);
+        return;
+      }
+      if (!leadPin) {
+        setError('Please choose a PIN');
+        setLoading(false);
+        return;
+      }
+      const result = await setupTeam({ teamName, leadName, leadEmail, leadPin });
       // result contains { token, coach, teamId, inviteCode }
       setToken(result.token);
       setStoredUser(result.coach);
@@ -82,6 +94,28 @@ export default function Setup() {
               onChange={(e) => setLeadEmail(e.target.value)}
               className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               placeholder="you@example.com"
+              required
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Choose a PIN</label>
+            <input
+              type="password"
+              value={leadPin}
+              onChange={(e) => setLeadPin(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              placeholder="Choose a PIN"
+              required
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Confirm PIN</label>
+            <input
+              type="password"
+              value={confirmPin}
+              onChange={(e) => setConfirmPin(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              placeholder="Confirm PIN"
               required
             />
           </div>

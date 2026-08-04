@@ -113,11 +113,8 @@ test.describe('Auth Flow', () => {
   test('login page renders', async ({ page }) => {
     await page.goto('/login');
     await expect(page.locator('h2')).toContainText('PlayerEval Login');
-  });
-
-  test('signup page renders with invite code', async ({ page }) => {
-    await page.goto('/signup?invite=test123');
-    await expect(page.locator('h2')).toContainText('Coach Signup');
-    await expect(page.locator('input[placeholder*="Invite code"]')).toHaveValue('test123');
+    await expect(page.locator('input[placeholder="coach@example.com"]')).toBeVisible();
+    await expect(page.locator('input[placeholder="Enter PIN"]')).toBeVisible();
+    await expect(page.locator('input[placeholder*="Invite code"]')).toBeVisible();
   });
 });

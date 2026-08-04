@@ -7,6 +7,8 @@ interface Coach {
   email: string;
   maxPlayers: number;
   isLead: boolean;
+  pin?: string;
+  pinIsTemporary?: boolean;
 }
 
 interface EditableRow {
@@ -29,6 +31,7 @@ export default function CoachEntry() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValues, setEditValues] = useState<EditableRow>(emptyRow);
   const [newRow, setNewRow] = useState<EditableRow>({ ...emptyRow });
+  const [resetMessage, setResetMessage] = useState('');
   const newRowRef = useRef<HTMLTableRowElement>(null);
   const editRowRef = useRef<HTMLTableRowElement>(null);
 
@@ -115,6 +118,17 @@ export default function CoachEntry() {
     try {
       await coaches.delete(id);
       await loadCoaches();
+    } catch (err: any) {
+      setError(err.message);
+    }
+  };
+
+  const handleResetPin = async (id: string) => {
+    try {
+      const result = await coaches.resetPin(id);
+      setResetMessage(`PIN reset to: ${result.pin}`);
+      await loadCoaches();
+      setTimeout(() => setResetMessage(''), 5000);
     } catch (err: any) {
       setError(err.message);
     }
@@ -229,6 +243,12 @@ export default function CoachEntry() {
         </div>
       )}
 
+      {resetMessage && (
+        <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded mb-4">
+          {resetMessage}
+        </div>
+      )}
+
       {inviteLink && (
         <div className="bg-purple-50 border border-purple-200 px-4 py-3 rounded mb-4 flex items-center gap-3">
           <span className="text-sm text-purple-700 flex-1 font-mono break-all">{inviteLink}</span>
@@ -248,6 +268,7 @@ export default function CoachEntry() {
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Email</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Max Players</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">PIN</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Role</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Actions</th>
             </tr>
@@ -294,21 +315,36 @@ export default function CoachEntry() {
                         className="w-full px-2 py-1 border rounded text-sm"
                       />
                     </td>
+                    <td className="px-4 py-2 text-sm font-mono">
+                      {coach.pin}
+                      {coach.pinIsTemporary && (
+                        <span className="ml-1 px-1.5 py-0.5 bg-orange-100 text-orange-700 rounded text-xs">temp</span>
+                      )}
+                    </td>
                     <td className="px-4 py-2 text-sm">
                       {coach.isLead && (
                         <span className="px-2 py-0.5 bg-yellow-100 text-yellow-800 rounded text-xs">Lead</span>
                       )}
                     </td>
                     <td className="px-4 py-2">
-                      <button
-                        onClick={(e) => { e.stopPropagation(); handleDelete(coach.id); }}
-                        className="text-red-600 hover:text-red-800"
-                        title="Delete"
-                      >
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                        </svg>
-                      </button>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleResetPin(coach.id); }}
+                          className="text-blue-600 hover:text-blue-800 text-xs font-medium"
+                          title="Reset PIN"
+                        >
+                          Reset PIN
+                        </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleDelete(coach.id); }}
+                          className="text-red-600 hover:text-red-800"
+                          title="Delete"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                        </button>
+                      </div>
                     </td>
                   </>
                 ) : (
@@ -316,21 +352,36 @@ export default function CoachEntry() {
                     <td className="px-4 py-3 text-sm font-medium">{coach.name}</td>
                     <td className="px-4 py-3 text-sm">{coach.email}</td>
                     <td className="px-4 py-3 text-sm">{coach.maxPlayers}</td>
+                    <td className="px-4 py-3 text-sm font-mono">
+                      {coach.pin}
+                      {coach.pinIsTemporary && (
+                        <span className="ml-1 px-1.5 py-0.5 bg-orange-100 text-orange-700 rounded text-xs">temp</span>
+                      )}
+                    </td>
                     <td className="px-4 py-3 text-sm">
                       {coach.isLead && (
                         <span className="px-2 py-0.5 bg-yellow-100 text-yellow-800 rounded text-xs">Lead</span>
                       )}
                     </td>
                     <td className="px-4 py-3 text-sm">
-                      <button
-                        onClick={(e) => { e.stopPropagation(); handleDelete(coach.id); }}
-                        className="text-red-600 hover:text-red-800"
-                        title="Delete"
-                      >
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                        </svg>
-                      </button>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleResetPin(coach.id); }}
+                          className="text-blue-600 hover:text-blue-800 text-xs font-medium"
+                          title="Reset PIN"
+                        >
+                          Reset PIN
+                        </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleDelete(coach.id); }}
+                          className="text-red-600 hover:text-red-800"
+                          title="Delete"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                        </button>
+                      </div>
                     </td>
                   </>
                 )}
@@ -372,6 +423,7 @@ export default function CoachEntry() {
                   className="w-full px-2 py-1 border border-dashed border-gray-300 rounded text-sm bg-white placeholder-gray-400"
                 />
               </td>
+              <td className="px-4 py-2 text-xs text-gray-400">Auto</td>
               <td className="px-4 py-2"></td>
               <td className="px-4 py-2 text-xs text-gray-400">
                 Type to add

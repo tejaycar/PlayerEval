@@ -23,6 +23,8 @@ function makeCoaches(specs: Array<{ maxPlayers: number }>): Coach[] {
     email: `coach${i + 1}@test.com`,
     maxPlayers: s.maxPlayers,
     isLead: i === 0,
+    pin: '1234',
+    pinIsTemporary: false,
   }));
 }
 
