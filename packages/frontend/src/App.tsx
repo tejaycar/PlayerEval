@@ -1,5 +1,5 @@
 import React from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { getToken, getStoredUser } from './api';
 import Layout from './components/Layout';
 import Login from './pages/Login';
@@ -31,7 +31,7 @@ export default function App() {
     <Routes>
       <Route path="/login" element={<Login />} />
       <Route path="/setup" element={<Setup />} />
-      <Route path="/signup" element={<Navigate to="/login" replace />} />
+      <Route path="/signup" element={<SignupRedirect />} />
       
       {/* Lead routes */}
       <Route path="/lead" element={<ProtectedRoute requireLead><Layout /></ProtectedRoute>}>
@@ -62,4 +62,9 @@ function DefaultRedirect() {
   if (!user) return <Navigate to="/login" replace />;
   if (user.isLead) return <Navigate to="/lead/players" replace />;
   return <Navigate to="/coach/rate" replace />;
+}
+
+function SignupRedirect() {
+  const location = useLocation();
+  return <Navigate to={`/login${location.search}`} replace />;
 }

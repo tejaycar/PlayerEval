@@ -152,6 +152,8 @@ export async function handler(event: Event): Promise<Result> {
     const { currentPin, newPin } = parseBody(event);
     if (!currentPin || !newPin) return json(400, { error: 'currentPin and newPin are required' });
 
+    if (newPin.length < 4) return json(400, { error: 'New PIN must be at least 4 characters' });
+
     // Get coach record
     const coachRecord = await getItem(`TEAM#${teamId}`, `COACH#${coachId}`);
     if (!coachRecord) return json(422, { error: 'Coach not found' });
@@ -170,7 +172,7 @@ export async function handler(event: Event): Promise<Result> {
     };
     const newToken = issueJWT(jwtPayload);
 
-    return json(200, { token: newToken });
+    return json(200, { token: newToken, coach: { id: coachId, name: coachRecord.name, isLead, teamId, email: user.email } });
   }
 
   // === Team routes ===
@@ -442,6 +444,11 @@ export async function handler(event: Event): Promise<Result> {
   if (method === 'POST' && path.match(/^\/coaches\/[\w-]+\/reset-pin$/)) {
     if (!isLead) return json(403, { error: 'Only leads can reset PINs' });
     const coachIdToReset = path.split('/')[2];
+
+    // Verify the coach exists
+    const coachToReset = await getItem(`TEAM#${teamId}`, `COACH#${coachIdToReset}`);
+    if (!coachToReset) return json(422, { error: 'Coach not found' });
+
     const pin = generatePin();
 
     await updateItem(`TEAM#${teamId}`, `COACH#${coachIdToReset}`, { pin, pinIsTemporary: true });
@@ -480,7 +487,7 @@ export async function handler(event: Event): Promise<Result> {
     if (!teamMeta) return json(422, { error: 'Team not found' });
 
     const baseUrl = process.env.BASE_URL || 'http://localhost:5173';
-    const link = `${baseUrl}/signup?invite=${teamMeta.inviteCode}`;
+    const link = `${baseUrl}/login?invite=${teamMeta.inviteCode}`;
     return json(200, { inviteLink: link, inviteCode: teamMeta.inviteCode });
   }
 
