@@ -7,6 +7,7 @@ import {
   DeleteCommand,
   BatchWriteCommand,
   UpdateCommand,
+  ScanCommand,
 } from '@aws-sdk/lib-dynamodb';
 
 const client = new DynamoDBClient({ region: process.env.AWS_REGION || 'us-east-2' });
@@ -135,4 +136,20 @@ export async function updateItem(
       ExpressionAttributeValues: values,
     })
   );
+}
+
+export async function scanForTeamByName(teamName: string): Promise<string | null> {
+  const result = await docClient.send(
+    new ScanCommand({
+      TableName: TABLE_NAME,
+      FilterExpression: 'SK = :sk',
+      ExpressionAttributeValues: { ':sk': 'META' },
+    })
+  );
+  const items = result.Items || [];
+  // Find team by name (case-insensitive)
+  const match = items.find(
+    (i) => i.PK?.startsWith('TEAM#') && (i.name as string || '').toLowerCase() === teamName.toLowerCase()
+  );
+  return match ? (match.id as string) : null;
 }
