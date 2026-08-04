@@ -19,13 +19,19 @@ export default function Login() {
     setError('');
     setLoading(true);
     try {
-      const result = await auth.login(email, pin, inviteCode);
+      // Try with invite code first, or fall back to stored teamId
+      const storedTeamId = localStorage.getItem('playereval_teamId') || '';
+      const result = await auth.login(email, pin, inviteCode || undefined, !inviteCode ? storedTeamId : undefined);
       if (result.mustChangePin) {
         setToken(result.token);
         setMustChangePin(true);
       } else {
         setToken(result.token);
         setStoredUser(result.coach);
+        // Store teamId for future logins without invite code
+        if (result.coach.teamId) {
+          localStorage.setItem('playereval_teamId', result.coach.teamId);
+        }
         if (result.coach.isLead) {
           navigate('/lead/players', { replace: true });
         } else {
@@ -149,13 +155,13 @@ export default function Login() {
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Invite Code</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Invite Code <span className="text-gray-400 font-normal">(first login only)</span></label>
             <input
               type="text"
               value={inviteCode}
               onChange={(e) => setInviteCode(e.target.value)}
               className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              placeholder="Invite code (from your team lead)"
+              placeholder="From your team lead (not needed after first login)"
             />
           </div>
           <button

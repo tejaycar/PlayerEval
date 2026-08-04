@@ -43,6 +43,9 @@ export default function Setup() {
       // result contains { token, coach, teamId, inviteCode }
       setToken(result.token);
       setStoredUser(result.coach);
+      if (result.teamId) {
+        localStorage.setItem('playereval_teamId', result.teamId);
+      }
       navigate('/lead/players', { replace: true });
     } catch (err: any) {
       setError(err.message);

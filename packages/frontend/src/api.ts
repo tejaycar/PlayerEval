@@ -65,7 +65,7 @@ async function request(method: string, path: string, body?: any): Promise<any> {
 
 // Auth
 export const auth = {
-  login: (email: string, pin: string, inviteCode: string) => request('POST', '/auth/login', { email, pin, inviteCode }),
+  login: (email: string, pin: string, inviteCode?: string, teamId?: string) => request('POST', '/auth/login', { email, pin, inviteCode: inviteCode || undefined, teamId: teamId || undefined }),
   changePin: (currentPin: string, newPin: string) => request('POST', '/auth/change-pin', { currentPin, newPin }),
 };
 

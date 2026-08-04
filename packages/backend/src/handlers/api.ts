@@ -43,23 +43,34 @@ export async function handler(event: Event): Promise<Result> {
 
   // POST /auth/login - Login with email + PIN + invite code
   if (method === 'POST' && path === '/auth/login') {
-    const { email, pin, inviteCode } = parseBody(event);
-    if (!email || !pin || !inviteCode) return json(400, { error: 'email, pin, and inviteCode are required' });
+    const { email, pin, inviteCode, teamId: providedTeamId } = parseBody(event);
+    if (!email || !pin) return json(400, { error: 'email and pin are required' });
 
-    // Look up team from invite code
-    const inviteItem = await getItem(`INVITE#${inviteCode}`, 'META');
-    if (!inviteItem) return json(422, { error: 'Invalid invite code' });
+    let teamId: string | undefined;
+    let coaches: any[];
 
-    const teamId = inviteItem.teamId;
-    const coaches = await queryItems(`TEAM#${teamId}`, 'COACH#');
-    const coach = coaches.find((c) => c.email === email);
+    if (inviteCode) {
+      // Login with invite code (first-time coach login)
+      const inviteItem = await getItem(`INVITE#${inviteCode}`, 'META');
+      if (!inviteItem) return json(422, { error: 'Invalid invite code' });
+      teamId = inviteItem.teamId;
+      coaches = await queryItems(`TEAM#${teamId}`, 'COACH#');
+    } else if (providedTeamId) {
+      // Login with teamId (returning user)
+      teamId = providedTeamId;
+      coaches = await queryItems(`TEAM#${teamId}`, 'COACH#');
+    } else {
+      return json(400, { error: 'Either inviteCode or teamId is required' });
+    }
+
+    const coach = coaches.find((c: any) => c.email.toLowerCase() === email.toLowerCase());
     if (!coach) return json(422, { error: 'Coach not found with this email' });
 
     if (!verifyPin(coach.pin, pin)) return json(401, { error: 'Invalid PIN' });
 
     const jwtPayload: JWTPayload = {
       coachId: coach.id,
-      teamId,
+      teamId: teamId!,
       email,
       isLead: coach.isLead || false,
     };
