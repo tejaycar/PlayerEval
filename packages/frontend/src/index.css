@@ -5,3 +5,71 @@
 body {
   @apply bg-gray-50 text-gray-900;
 }
+
+@media print {
+  /* Hide everything except the main content */
+  header, nav, button, .no-print {
+    display: none !important;
+  }
+
+  body {
+    background: white !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  main {
+    padding: 0 !important;
+    max-width: 100% !important;
+  }
+
+  /* Make table print-friendly */
+  table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+    font-size: 11px !important;
+    box-shadow: none !important;
+  }
+
+  table th, table td {
+    border: 1px solid #d1d5db !important;
+    padding: 4px 8px !important;
+  }
+
+  table thead {
+    background: #f3f4f6 !important;
+  }
+
+  /* Show the value of inputs as plain text for print */
+  input[type="number"] {
+    border: none !important;
+    background: transparent !important;
+    text-align: center !important;
+    padding: 0 !important;
+    -moz-appearance: textfield;
+    appearance: textfield;
+    width: auto !important;
+    box-shadow: none !important;
+  }
+
+  input[type="number"]::-webkit-outer-spin-button,
+  input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+
+  /* Remove rounded corners and shadows */
+  .rounded-lg, .rounded {
+    border-radius: 0 !important;
+  }
+
+  .shadow-sm, .shadow-md {
+    box-shadow: none !important;
+  }
+
+  /* Page title for print */
+  h2 {
+    font-size: 16px !important;
+    margin-bottom: 8px !important;
+  }
+}
