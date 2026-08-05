@@ -1,6 +1,6 @@
 import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda';
 import { v4 as uuidv4 } from 'uuid';
-import { putItem, getItem, queryItems, deleteItem, batchPutItems, updateItem } from '../db';
+import { putItem, getItem, queryItems, deleteItem, batchPutItems, updateItem, scanForTeamByName } from '../db';
 import { authenticateRequest, issueJWT, generatePin, verifyPin } from '../auth';
 import { computeAssignments } from '../assignment';
 import type { Player, Coach, Evaluation, JWTPayload } from '@player-eval/shared';
@@ -41,19 +41,29 @@ export async function handler(event: Event): Promise<Result> {
 
   // === Public routes (no auth required) ===
 
-  // POST /auth/login - Login with email + PIN + invite code
+  // POST /auth/login - Login with email + PIN + team name
   if (method === 'POST' && path === '/auth/login') {
-    const { email, pin, inviteCode } = parseBody(event);
-    if (!email || !pin || !inviteCode) return json(400, { error: 'email, pin, and inviteCode are required' });
+    const { email, pin, teamName, inviteCode } = parseBody(event);
+    if (!email || !pin) return json(400, { error: 'email and pin are required' });
+    if (!teamName && !inviteCode) return json(400, { error: 'teamName or inviteCode is required' });
 
-    // Look up team from invite code
-    const inviteItem = await getItem(`INVITE#${inviteCode}`, 'META');
-    if (!inviteItem) return json(422, { error: 'Invalid invite code' });
+    let teamId: string;
 
-    const teamId = inviteItem.teamId;
+    if (inviteCode) {
+      // Support invite code as fallback
+      const inviteItem = await getItem(`INVITE#${inviteCode}`, 'META');
+      if (!inviteItem) return json(422, { error: 'Invalid invite code' });
+      teamId = inviteItem.teamId;
+    } else {
+      // Look up team by name (case-insensitive scan)
+      const foundTeamId = await scanForTeamByName(teamName);
+      if (!foundTeamId) return json(422, { error: `Team "${teamName}" not found` });
+      teamId = foundTeamId;
+    }
+
     const coaches = await queryItems(`TEAM#${teamId}`, 'COACH#');
-    const coach = coaches.find((c) => c.email === email);
-    if (!coach) return json(422, { error: 'Coach not found with this email' });
+    const coach = coaches.find((c: any) => c.email.toLowerCase() === email.toLowerCase());
+    if (!coach) return json(422, { error: 'Coach not found with this email on that team' });
 
     if (!verifyPin(coach.pin, pin)) return json(401, { error: 'Invalid PIN' });
 

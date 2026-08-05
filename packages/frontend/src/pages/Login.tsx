@@ -6,7 +6,8 @@ export default function Login() {
   const [searchParams] = useSearchParams();
   const [email, setEmail] = useState('');
   const [pin, setPin] = useState('');
-  const [inviteCode, setInviteCode] = useState(searchParams.get('invite') || '');
+  const [teamName, setTeamName] = useState(searchParams.get('team') || '');
+  const [inviteCode] = useState(searchParams.get('invite') || '');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [mustChangePin, setMustChangePin] = useState(false);
@@ -19,7 +20,7 @@ export default function Login() {
     setError('');
     setLoading(true);
     try {
-      const result = await auth.login(email, pin, inviteCode);
+      const result = await auth.login(email, pin, teamName, inviteCode || undefined);
       if (result.mustChangePin) {
         setToken(result.token);
         setMustChangePin(true);
@@ -149,13 +150,14 @@ export default function Login() {
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Invite Code</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Team Name</label>
             <input
               type="text"
-              value={inviteCode}
-              onChange={(e) => setInviteCode(e.target.value)}
+              value={teamName}
+              onChange={(e) => setTeamName(e.target.value)}
               className="w-full px-3 py-2 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              placeholder="Invite code (from your team lead)"
+              placeholder="e.g. Warriors 5th"
+              required
             />
           </div>
           <button

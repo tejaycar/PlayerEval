@@ -115,6 +115,6 @@ test.describe('Auth Flow', () => {
     await expect(page.locator('h2')).toContainText('PlayerEval Login');
     await expect(page.locator('input[placeholder="coach@example.com"]')).toBeVisible();
     await expect(page.locator('input[placeholder="Enter PIN"]')).toBeVisible();
-    await expect(page.locator('input[placeholder*="Invite code"]')).toBeVisible();
+    await expect(page.locator('input[placeholder*="Warriors"]')).toBeVisible();
   });
 });
