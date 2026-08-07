@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { putItem, getItem, queryItems, deleteItem, batchPutItems, updateItem, scanForTeamByName } from '../db';
 import { authenticateRequest, issueJWT, generatePin, verifyPin } from '../auth';
 import { computeAssignments } from '../assignment';
+import { computeAnalysis } from '../analysis';
 import type { Player, Coach, Evaluation, JWTPayload } from '@player-eval/shared';
 
 type Event = APIGatewayProxyEventV2;
@@ -679,6 +680,48 @@ export async function handler(event: Event): Promise<Result> {
     });
 
     return json(200, { summary });
+  }
+
+  // POST /evaluations/analysis - Compute normalized analysis (POST to accept excludedCoachIds)
+  if (method === 'POST' && path === '/evaluations/analysis') {
+    const body = parseBody(event);
+    const excludedCoachIds: string[] = body.excludedCoachIds || [];
+
+    const evalItems = await queryItems(`TEAM#${teamId}`, 'EVAL#');
+    const playerItems = await queryItems(`TEAM#${teamId}`, 'PLAYER#');
+    const coachItems = await queryItems(`TEAM#${teamId}`, 'COACH#');
+
+    const evaluationsData = evalItems.map((item) => ({
+      coachId: item.coachId,
+      playerId: item.playerId,
+      attitude: item.attitude,
+      effort: item.effort,
+      footballIQ: item.footballIQ,
+      generalSkill: item.generalSkill,
+      positionSkill: item.positionSkill,
+      totalScore: item.totalScore,
+    }));
+
+    const playersData = playerItems.map((p) => ({
+      id: p.id,
+      name: p.name,
+      number: p.number,
+    }));
+
+    const coachesData = coachItems.map((c) => ({
+      id: c.id,
+      name: c.name,
+    }));
+
+    const analysis = computeAnalysis(evaluationsData, playersData, coachesData, excludedCoachIds, isLead);
+
+    // Non-leads don't get coach reliability data
+    if (!isLead) {
+      analysis.coachReliability = [];
+      analysis.playerImpactWarnings = [];
+    }
+
+    return json(200, analysis);
   }
 
   // GET /evaluations/player/:playerId - Detailed evaluations for a player (lead only)
