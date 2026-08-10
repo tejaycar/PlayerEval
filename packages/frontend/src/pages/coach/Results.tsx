@@ -5,6 +5,8 @@ interface PlayerSummary {
   playerId: string;
   playerName: string;
   playerNumber: string;
+  primaryPosition: string;
+  secondaryPosition: string;
   evaluationCount: number;
   avgAttitude: number;
   avgEffort: number;
@@ -13,6 +15,8 @@ interface PlayerSummary {
   avgPositionSkill: number;
   avgTotal: number;
 }
+
+const STRING_FIELDS = new Set(['playerName', 'playerNumber', 'primaryPosition', 'secondaryPosition']);
 
 export default function Results() {
   const [summary, setSummary] = useState<PlayerSummary[]>([]);
@@ -41,15 +45,24 @@ export default function Results() {
       setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
     } else {
       setSortBy(field);
-      setSortDir('desc');
+      setSortDir(STRING_FIELDS.has(field) ? 'asc' : 'desc');
     }
   };
 
   const sortedSummary = [...summary].sort((a: any, b: any) => {
     const aVal = a[sortBy];
     const bVal = b[sortBy];
+    if (STRING_FIELDS.has(sortBy)) {
+      const cmp = String(aVal || '').localeCompare(String(bVal || ''));
+      return sortDir === 'asc' ? cmp : -cmp;
+    }
     return sortDir === 'asc' ? aVal - bVal : bVal - aVal;
   });
+
+  const formatScore = (value: number, evalCount: number) => {
+    if (evalCount === 0) return '--';
+    return value;
+  };
 
   if (loading) return <div className="text-center py-8">Loading results...</div>;
 
@@ -63,42 +76,42 @@ export default function Results() {
         </div>
       )}
 
-      {summary.length === 0 ? (
-        <p className="text-gray-500">No evaluations submitted yet.</p>
-      ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full bg-white rounded-lg shadow-sm border">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">#</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Player</th>
-                <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Evals</th>
-                <SortHeader field="avgAttitude" label="Attitude" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
-                <SortHeader field="avgEffort" label="Effort" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
-                <SortHeader field="avgFootballIQ" label="Football IQ" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
-                <SortHeader field="avgGeneralSkill" label="General Skill" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
-                <SortHeader field="avgPositionSkill" label="Position Skill" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
-                <SortHeader field="avgTotal" label="Total" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
+      <div className="overflow-x-auto">
+        <table className="w-full bg-white rounded-lg shadow-sm border">
+          <thead className="bg-gray-50">
+            <tr>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">#</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Player</th>
+              <SortHeader field="primaryPosition" label="Primary Pos" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
+              <SortHeader field="secondaryPosition" label="Secondary Pos" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
+              <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Evals</th>
+              <SortHeader field="avgAttitude" label="Attitude" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
+              <SortHeader field="avgEffort" label="Effort" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
+              <SortHeader field="avgFootballIQ" label="Football IQ" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
+              <SortHeader field="avgGeneralSkill" label="General Skill" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
+              <SortHeader field="avgPositionSkill" label="Position Skill" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
+              <SortHeader field="avgTotal" label="Total" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-200">
+            {sortedSummary.map((player) => (
+              <tr key={player.playerId} className="hover:bg-gray-50">
+                <td className="px-4 py-3 text-sm text-gray-500">{player.playerNumber}</td>
+                <td className="px-4 py-3 text-sm font-medium">{player.playerName}</td>
+                <td className="px-4 py-3 text-sm text-center">{player.primaryPosition || '--'}</td>
+                <td className="px-4 py-3 text-sm text-center">{player.secondaryPosition || '--'}</td>
+                <td className="px-4 py-3 text-sm text-center">{player.evaluationCount}</td>
+                <td className="px-4 py-3 text-sm text-center">{formatScore(player.avgAttitude, player.evaluationCount)}</td>
+                <td className="px-4 py-3 text-sm text-center">{formatScore(player.avgEffort, player.evaluationCount)}</td>
+                <td className="px-4 py-3 text-sm text-center">{formatScore(player.avgFootballIQ, player.evaluationCount)}</td>
+                <td className="px-4 py-3 text-sm text-center">{formatScore(player.avgGeneralSkill, player.evaluationCount)}</td>
+                <td className="px-4 py-3 text-sm text-center">{formatScore(player.avgPositionSkill, player.evaluationCount)}</td>
+                <td className="px-4 py-3 text-sm text-center font-bold">{formatScore(player.avgTotal, player.evaluationCount)}</td>
               </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200">
-              {sortedSummary.map((player) => (
-                <tr key={player.playerId} className="hover:bg-gray-50">
-                  <td className="px-4 py-3 text-sm text-gray-500">{player.playerNumber}</td>
-                  <td className="px-4 py-3 text-sm font-medium">{player.playerName}</td>
-                  <td className="px-4 py-3 text-sm text-center">{player.evaluationCount}</td>
-                  <td className="px-4 py-3 text-sm text-center">{player.avgAttitude}</td>
-                  <td className="px-4 py-3 text-sm text-center">{player.avgEffort}</td>
-                  <td className="px-4 py-3 text-sm text-center">{player.avgFootballIQ}</td>
-                  <td className="px-4 py-3 text-sm text-center">{player.avgGeneralSkill}</td>
-                  <td className="px-4 py-3 text-sm text-center">{player.avgPositionSkill}</td>
-                  <td className="px-4 py-3 text-sm text-center font-bold">{player.avgTotal}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
