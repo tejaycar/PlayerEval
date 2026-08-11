@@ -96,10 +96,6 @@ export default function Analysis() {
     );
   }, [analysis, playerFilter]);
 
-  if (loading && !analysis) {
-    return <div className="text-center py-8">Loading analysis...</div>;
-  }
-
   const tabs: { id: TabId; label: string }[] = [
     { id: 'rankings', label: 'Player Rankings' },
     { id: 'boxplots', label: 'Box Plots' },
@@ -127,9 +123,13 @@ export default function Analysis() {
     if (!anonymize) return analysis.coachReliability;
     return analysis.coachReliability.map((cr) => ({
       ...cr,
-      coachName: getCoachDisplayName(cr.coachId, cr.coachName),
+      coachName: coachNameMap.get(cr.coachId) || cr.coachName,
     }));
   }, [analysis, anonymize, coachNameMap]);
+
+  if (loading && !analysis) {
+    return <div className="text-center py-8">Loading analysis...</div>;
+  }
 
 
   return (
