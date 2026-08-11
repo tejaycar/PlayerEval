@@ -3,7 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { putItem, getItem, queryItems, deleteItem, batchPutItems, updateItem, scanForTeamByName } from '../db';
 import { authenticateRequest, issueJWT, generatePin, verifyPin } from '../auth';
 import { computeAssignments } from '../assignment';
-import { computeAnalysis } from '../analysis';
+import { computeAnalysis, computePlayerNormalizedEvals } from '../analysis';
 import type { Player, Coach, Evaluation, JWTPayload } from '@player-eval/shared';
 
 type Event = APIGatewayProxyEventV2;
@@ -772,11 +772,16 @@ export async function handler(event: Event): Promise<Result> {
     const items = await queryItems(`TEAM#${teamId}`, 'EVAL#');
     const playerEvals = items.filter((item) => item.playerId === playerId);
     const coachItems = await queryItems(`TEAM#${teamId}`, 'COACH#');
-    const coachMap = new Map(coachItems.map((c) => [c.id, c]));
+    const coachMapLocal = new Map(coachItems.map((c) => [c.id, c]));
 
-    const evaluations = playerEvals.map((item) => ({
+    // Get saved exclusions for normalization
+    const teamMeta = await getItem(`TEAM#${teamId}`, 'META');
+    const excludedCoachIds: string[] = teamMeta?.excludedCoachIds || [];
+
+    // Build all evaluations for normalization context
+    const allEvalsData = items.map((item) => ({
       coachId: item.coachId,
-      coachName: coachMap.get(item.coachId)?.name || 'Unknown',
+      playerId: item.playerId,
       attitude: item.attitude,
       effort: item.effort,
       footballIQ: item.footballIQ,
@@ -785,7 +790,27 @@ export async function handler(event: Event): Promise<Result> {
       totalScore: item.totalScore,
     }));
 
-    return json(200, { playerId, evaluations });
+    const coachesData = coachItems.map((c) => ({
+      id: c.id,
+      name: c.name,
+    }));
+
+    // Compute per-coach normalized evaluations for this player
+    const normalizedEvals = computePlayerNormalizedEvals(allEvalsData, playerId, coachesData, excludedCoachIds);
+
+    // Also return legacy raw-only format for backward compatibility
+    const evaluations = playerEvals.map((item) => ({
+      coachId: item.coachId,
+      coachName: coachMapLocal.get(item.coachId)?.name || 'Unknown',
+      attitude: item.attitude,
+      effort: item.effort,
+      footballIQ: item.footballIQ,
+      generalSkill: item.generalSkill,
+      positionSkill: item.positionSkill,
+      totalScore: item.totalScore,
+    }));
+
+    return json(200, { playerId, evaluations, normalizedEvals });
   }
 
   // POST /evaluations - Submit evaluation
