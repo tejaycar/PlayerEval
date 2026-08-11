@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { evaluations } from '../../api';
 
 interface PlayerSummary {
@@ -24,6 +24,7 @@ export default function Results() {
   const [error, setError] = useState('');
   const [sortBy, setSortBy] = useState<string>('avgTotal');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+  const [positionFilter, setPositionFilter] = useState<string>('');
 
   useEffect(() => {
     loadSummary();
@@ -49,7 +50,25 @@ export default function Results() {
     }
   };
 
-  const sortedSummary = [...summary].sort((a: any, b: any) => {
+  const uniquePositions = useMemo(() => {
+    const positions = new Set<string>();
+    summary.forEach((player) => {
+      if (player.primaryPosition) positions.add(player.primaryPosition);
+      if (player.secondaryPosition) positions.add(player.secondaryPosition);
+    });
+    return Array.from(positions).sort();
+  }, [summary]);
+
+  const filteredSummary = useMemo(() => {
+    if (!positionFilter) return summary;
+    return summary.filter(
+      (player) =>
+        player.primaryPosition === positionFilter ||
+        player.secondaryPosition === positionFilter
+    );
+  }, [summary, positionFilter]);
+
+  const sortedSummary = [...filteredSummary].sort((a: any, b: any) => {
     const aVal = a[sortBy];
     const bVal = b[sortBy];
     if (STRING_FIELDS.has(sortBy)) {
@@ -75,6 +94,25 @@ export default function Results() {
           {error}
         </div>
       )}
+
+      <div className="mb-4">
+        <label htmlFor="position-filter" className="text-sm font-medium text-gray-700 mr-2">
+          Filter by Position:
+        </label>
+        <select
+          id="position-filter"
+          value={positionFilter}
+          onChange={(e) => setPositionFilter(e.target.value)}
+          className="border border-gray-300 rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+        >
+          <option value="">All Positions</option>
+          {uniquePositions.map((pos) => (
+            <option key={pos} value={pos}>
+              {pos}
+            </option>
+          ))}
+        </select>
+      </div>
 
       <div className="overflow-x-auto">
         <table className="w-full bg-white rounded-lg shadow-sm border">
