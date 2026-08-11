@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { evaluations, players as playersApi, coaches as coachesApi } from '../../api';
+import { evaluations, players as playersApi, coaches as coachesApi, team } from '../../api';
+import type { NormalizedPlayerScore } from '@player-eval/shared';
 import { RATING_LABELS } from './ratingLabels';
 
 interface PlayerEval {
@@ -26,6 +27,7 @@ export default function PlayerSummary() {
   const [playerList, setPlayerList] = useState<Player[]>([]);
   const [selectedPlayer, setSelectedPlayer] = useState<string>(playerId || '');
   const [evalData, setEvalData] = useState<PlayerEval[]>([]);
+  const [normalizedData, setNormalizedData] = useState<NormalizedPlayerScore | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [anonymize, setAnonymize] = useState(true);
@@ -34,6 +36,7 @@ export default function PlayerSummary() {
   useEffect(() => {
     loadPlayers();
     loadCoachesForAnonymization();
+    loadNormalizedScores();
   }, []);
 
   useEffect(() => {
@@ -85,6 +88,19 @@ export default function PlayerSummary() {
     }
   };
 
+  const [allNormalized, setAllNormalized] = useState<NormalizedPlayerScore[]>([]);
+
+  const loadNormalizedScores = async () => {
+    try {
+      const exclusionData = await team.getExcludedCoaches();
+      const excludedIds = exclusionData.excludedCoachIds || [];
+      const data = await evaluations.analysis(excludedIds);
+      setAllNormalized(data.playerRankings);
+    } catch {
+      // Ignore - normalized data is supplemental
+    }
+  };
+
   const handlePlayerSelect = (pid: string) => {
     setSelectedPlayer(pid);
     navigate(`/lead/player-summary/${pid}`, { replace: true });
@@ -107,6 +123,7 @@ export default function PlayerSummary() {
 
   const averages = calculateAverages();
   const selectedPlayerData = playerList.find((p) => p.id === selectedPlayer);
+  const normalizedForPlayer = allNormalized.find((p) => p.playerId === selectedPlayer);
 
   return (
     <div>
@@ -183,13 +200,25 @@ export default function PlayerSummary() {
                   {/* Average row */}
                   {averages && (
                     <tr className="bg-blue-50 font-semibold">
-                      <td className="px-4 py-3 text-sm">Average</td>
+                      <td className="px-4 py-3 text-sm">Raw Average</td>
                       <td className="px-4 py-3 text-sm text-center">{averages.attitude}</td>
                       <td className="px-4 py-3 text-sm text-center">{averages.effort}</td>
                       <td className="px-4 py-3 text-sm text-center">{averages.footballIQ}</td>
                       <td className="px-4 py-3 text-sm text-center">{averages.generalSkill}</td>
                       <td className="px-4 py-3 text-sm text-center">{averages.positionSkill}</td>
                       <td className="px-4 py-3 text-sm text-center font-bold">{averages.totalScore}</td>
+                    </tr>
+                  )}
+                  {/* Normalized row */}
+                  {normalizedForPlayer && (
+                    <tr className="bg-green-50 font-semibold">
+                      <td className="px-4 py-3 text-sm">Normalized (Z-Score)</td>
+                      <td className="px-4 py-3 text-sm text-center">{normalizedForPlayer.categories.attitude}</td>
+                      <td className="px-4 py-3 text-sm text-center">{normalizedForPlayer.categories.effort}</td>
+                      <td className="px-4 py-3 text-sm text-center">{normalizedForPlayer.categories.footballIQ}</td>
+                      <td className="px-4 py-3 text-sm text-center">{normalizedForPlayer.categories.generalSkill}</td>
+                      <td className="px-4 py-3 text-sm text-center">{normalizedForPlayer.categories.positionSkill}</td>
+                      <td className="px-4 py-3 text-sm text-center font-bold text-green-700">{normalizedForPlayer.normalizedTotal}</td>
                     </tr>
                   )}
                 </tbody>
