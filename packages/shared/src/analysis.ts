@@ -12,6 +12,8 @@ export interface NormalizedPlayerScore {
   playerId: string;
   playerName: string;
   playerNumber: string;
+  primaryPosition: string;
+  secondaryPosition: string;
   evaluationCount: number; // how many coaches rated this player (after exclusions)
   rawTotal: number; // average raw total across coaches
   normalizedTotal: number; // Z-score normalized total, rescaled

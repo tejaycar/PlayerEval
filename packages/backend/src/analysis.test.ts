@@ -18,6 +18,8 @@ interface PlayerInfo {
   id: string;
   name: string;
   number: string;
+  primaryPosition: string;
+  secondaryPosition: string;
 }
 
 interface CoachInfo {
@@ -32,6 +34,8 @@ function makePlayers(count: number): PlayerInfo[] {
     id: `player-${i + 1}`,
     name: `Player ${i + 1}`,
     number: String(i + 1),
+    primaryPosition: '',
+    secondaryPosition: '',
   }));
 }
 
@@ -367,7 +371,7 @@ describe('computeAnalysis', () => {
 
     it('verifies box plot quartiles with hand-computed known data', () => {
       // Use a small controlled dataset where we can compute quartiles by hand
-      const smallPlayers: PlayerInfo[] = [{ id: 'p1', name: 'Test Player', number: '99' }];
+      const smallPlayers: PlayerInfo[] = [{ id: 'p1', name: 'Test Player', number: '99', primaryPosition: '', secondaryPosition: '' }];
       const smallCoaches: CoachInfo[] = [
         { id: 'c1', name: 'C1' },
         { id: 'c2', name: 'C2' },
@@ -553,8 +557,8 @@ describe('computeAnalysis', () => {
     it('fewer than 3 data points returns rank correlation of 0', () => {
       // Create a scenario with a coach who rates only 2 players
       const twoPlayers: PlayerInfo[] = [
-        { id: 'p1', name: 'P1', number: '1' },
-        { id: 'p2', name: 'P2', number: '2' },
+        { id: 'p1', name: 'P1', number: '1', primaryPosition: '', secondaryPosition: '' },
+        { id: 'p2', name: 'P2', number: '2', primaryPosition: '', secondaryPosition: '' },
       ];
       const twoCoaches: CoachInfo[] = [
         { id: 'c1', name: 'C1' },
@@ -577,9 +581,9 @@ describe('computeAnalysis', () => {
     it('perfect correlation returns 1.0 when coach agrees with consensus', () => {
       // Create a scenario where one coach perfectly agrees with the consensus
       const threePlayers: PlayerInfo[] = [
-        { id: 'p1', name: 'P1', number: '1' },
-        { id: 'p2', name: 'P2', number: '2' },
-        { id: 'p3', name: 'P3', number: '3' },
+        { id: 'p1', name: 'P1', number: '1', primaryPosition: '', secondaryPosition: '' },
+        { id: 'p2', name: 'P2', number: '2', primaryPosition: '', secondaryPosition: '' },
+        { id: 'p3', name: 'P3', number: '3', primaryPosition: '', secondaryPosition: '' },
       ];
       const threeCoaches: CoachInfo[] = [
         { id: 'c1', name: 'C1' },
@@ -609,9 +613,9 @@ describe('computeAnalysis', () => {
     it('anti-correlation returns -1.0 when coach disagrees with consensus', () => {
       // One coach ranks in exact opposite order from the other two
       const threePlayers: PlayerInfo[] = [
-        { id: 'p1', name: 'P1', number: '1' },
-        { id: 'p2', name: 'P2', number: '2' },
-        { id: 'p3', name: 'P3', number: '3' },
+        { id: 'p1', name: 'P1', number: '1', primaryPosition: '', secondaryPosition: '' },
+        { id: 'p2', name: 'P2', number: '2', primaryPosition: '', secondaryPosition: '' },
+        { id: 'p3', name: 'P3', number: '3', primaryPosition: '', secondaryPosition: '' },
       ];
       const threeCoaches: CoachInfo[] = [
         { id: 'c1', name: 'C1' },
@@ -641,10 +645,10 @@ describe('computeAnalysis', () => {
     it('tied ranks are handled correctly without errors', () => {
       // Create tied scores
       const fourPlayers: PlayerInfo[] = [
-        { id: 'p1', name: 'P1', number: '1' },
-        { id: 'p2', name: 'P2', number: '2' },
-        { id: 'p3', name: 'P3', number: '3' },
-        { id: 'p4', name: 'P4', number: '4' },
+        { id: 'p1', name: 'P1', number: '1', primaryPosition: '', secondaryPosition: '' },
+        { id: 'p2', name: 'P2', number: '2', primaryPosition: '', secondaryPosition: '' },
+        { id: 'p3', name: 'P3', number: '3', primaryPosition: '', secondaryPosition: '' },
+        { id: 'p4', name: 'P4', number: '4', primaryPosition: '', secondaryPosition: '' },
       ];
       const twoCoaches: CoachInfo[] = [
         { id: 'c1', name: 'C1' },
@@ -686,9 +690,9 @@ describe('computeAnalysis', () => {
 
     it('single evaluation per player produces valid non-NaN results', () => {
       const singlePlayers: PlayerInfo[] = [
-        { id: 'p1', name: 'P1', number: '1' },
-        { id: 'p2', name: 'P2', number: '2' },
-        { id: 'p3', name: 'P3', number: '3' },
+        { id: 'p1', name: 'P1', number: '1', primaryPosition: '', secondaryPosition: '' },
+        { id: 'p2', name: 'P2', number: '2', primaryPosition: '', secondaryPosition: '' },
+        { id: 'p3', name: 'P3', number: '3', primaryPosition: '', secondaryPosition: '' },
       ];
       const singleCoach: CoachInfo[] = [{ id: 'c1', name: 'C1' }];
       const singleEvals: RawEvaluation[] = [
@@ -727,7 +731,7 @@ describe('computeAnalysis', () => {
 
     it('players with no evaluations do not appear in results', () => {
       // Add an extra player with no evaluations
-      const extraPlayers = [...players, { id: 'player-99', name: 'Ghost', number: '99' }];
+      const extraPlayers = [...players, { id: 'player-99', name: 'Ghost', number: '99', primaryPosition: '', secondaryPosition: '' }];
       const result = computeAnalysis(evaluations, extraPlayers, coaches, [], true);
       const ghost = result.playerRankings.find((r) => r.playerId === 'player-99');
       expect(ghost).toBeUndefined();

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { evaluations, coaches as coachesApi } from '../../api';
+import { evaluations, coaches as coachesApi, team } from '../../api';
 import type {
   AnalysisResponse,
   NormalizedPlayerScore,
@@ -21,9 +21,11 @@ export default function Analysis() {
   const [excludedCoachIds, setExcludedCoachIds] = useState<string[]>([]);
   const [coachList, setCoachList] = useState<{ id: string; name: string }[]>([]);
   const [playerFilter, setPlayerFilter] = useState('');
+  const [anonymize, setAnonymize] = useState(true);
 
   useEffect(() => {
     loadCoaches();
+    loadSavedExclusions();
   }, []);
 
   useEffect(() => {
@@ -37,6 +39,15 @@ export default function Analysis() {
       setCoachList(data.coaches.map((c: any) => ({ id: c.id, name: c.name })));
     } catch (err: any) {
       setError(err.message);
+    }
+  };
+
+  const loadSavedExclusions = async () => {
+    try {
+      const data = await team.getExcludedCoaches();
+      setExcludedCoachIds(data.excludedCoachIds || []);
+    } catch (err: any) {
+      // Ignore - will just start with empty exclusions
     }
   };
 
@@ -54,11 +65,14 @@ export default function Analysis() {
   };
 
   const toggleCoachExclusion = (coachId: string) => {
-    setExcludedCoachIds((prev) =>
-      prev.includes(coachId)
+    setExcludedCoachIds((prev) => {
+      const next = prev.includes(coachId)
         ? prev.filter((id) => id !== coachId)
-        : [...prev, coachId]
-    );
+        : [...prev, coachId];
+      // Persist to backend
+      team.saveExcludedCoaches(next).catch(() => {});
+      return next;
+    });
   };
 
 
@@ -92,6 +106,31 @@ export default function Analysis() {
     { id: 'reliability', label: 'Coach Reliability' },
   ];
 
+  // Build a stable coach name mapping for anonymization
+  const coachNameMap = useMemo(() => {
+    const map = new Map<string, string>();
+    const sortedCoaches = [...coachList].sort((a, b) => a.name.localeCompare(b.name));
+    sortedCoaches.forEach((c, i) => {
+      map.set(c.id, `Coach ${i + 1}`);
+    });
+    return map;
+  }, [coachList]);
+
+  const getCoachDisplayName = (coachId: string, realName: string) => {
+    if (!anonymize) return realName;
+    return coachNameMap.get(coachId) || realName;
+  };
+
+  // Anonymize coach reliability data if needed
+  const displayReliability = useMemo(() => {
+    if (!analysis) return [];
+    if (!anonymize) return analysis.coachReliability;
+    return analysis.coachReliability.map((cr) => ({
+      ...cr,
+      coachName: getCoachDisplayName(cr.coachId, cr.coachName),
+    }));
+  }, [analysis, anonymize, coachNameMap]);
+
 
   return (
     <div>
@@ -123,9 +162,20 @@ export default function Analysis() {
 
       {/* Coach Exclusion Panel */}
       <div className="mb-4 p-4 bg-gray-50 border rounded">
-        <h3 className="text-sm font-semibold text-gray-700 mb-2">
-          Exclude Coaches from Analysis
-        </h3>
+        <div className="flex items-center justify-between mb-2">
+          <h3 className="text-sm font-semibold text-gray-700">
+            Exclude Coaches from Analysis
+          </h3>
+          <label className="inline-flex items-center gap-2 text-sm cursor-pointer">
+            <input
+              type="checkbox"
+              checked={anonymize}
+              onChange={(e) => setAnonymize(e.target.checked)}
+              className="rounded border-gray-300"
+            />
+            <span className="text-gray-600">Anonymize coaches</span>
+          </label>
+        </div>
         <div className="flex flex-wrap gap-2">
           {coachList.map((coach) => (
             <label
@@ -142,7 +192,7 @@ export default function Analysis() {
                 checked={excludedCoachIds.includes(coach.id)}
                 onChange={() => toggleCoachExclusion(coach.id)}
               />
-              {excludedCoachIds.includes(coach.id) ? '✕ ' : ''}{coach.name}
+              {excludedCoachIds.includes(coach.id) ? '✕ ' : ''}{getCoachDisplayName(coach.id, coach.name)}
             </label>
           ))}
         </div>
@@ -211,7 +261,7 @@ export default function Analysis() {
             <PlayerBoxPlotsTab boxPlots={filteredBoxPlots} />
           )}
           {activeTab === 'reliability' && (
-            <CoachReliabilityTab reliability={analysis.coachReliability} />
+            <CoachReliabilityTab reliability={displayReliability} />
           )}
         </>
       )}

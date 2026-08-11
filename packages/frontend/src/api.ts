@@ -73,6 +73,8 @@ export const auth = {
 export const team = {
   get: () => request('GET', '/team'),
   create: (name: string) => request('POST', '/team', { name }),
+  getExcludedCoaches: () => request('GET', '/team/excluded-coaches'),
+  saveExcludedCoaches: (excludedCoachIds: string[]) => request('PUT', '/team/excluded-coaches', { excludedCoachIds }),
 };
 
 // Players
