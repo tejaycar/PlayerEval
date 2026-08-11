@@ -58,6 +58,7 @@ export default function Layout() {
               <NavLink to="/lead/coaches" current={location.pathname}>Coaches</NavLink>
               <NavLink to="/lead/assignments" current={location.pathname}>Assignments</NavLink>
               <NavLink to="/lead/player-summary" current={location.pathname}>Player Summary</NavLink>
+              <NavLink to="/lead/analysis" current={location.pathname}>Analysis</NavLink>
             </>
           ) : (
             <>

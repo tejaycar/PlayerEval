@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { putItem, getItem, queryItems, deleteItem, batchPutItems, updateItem, scanForTeamByName } from '../db';
 import { authenticateRequest, issueJWT, generatePin, verifyPin } from '../auth';
 import { computeAssignments } from '../assignment';
+import { computeAnalysis } from '../analysis';
 import type { Player, Coach, Evaluation, JWTPayload } from '@player-eval/shared';
 
 type Event = APIGatewayProxyEventV2;
@@ -635,18 +636,13 @@ export async function handler(event: Event): Promise<Result> {
     const items = await queryItems(`TEAM#${teamId}`, 'EVAL#');
     const playerItems = await queryItems(`TEAM#${teamId}`, 'PLAYER#');
 
-    // Build summary per player
-    const playerMap = new Map(playerItems.map((p) => [p.id, p]));
-    const summaryMap: Record<string, { ratings: number[][]; player: any }> = {};
-
+    // Build ratings map from evaluations
+    const ratingsMap: Record<string, number[][]> = {};
     for (const item of items) {
-      if (!summaryMap[item.playerId]) {
-        summaryMap[item.playerId] = {
-          player: playerMap.get(item.playerId),
-          ratings: [],
-        };
+      if (!ratingsMap[item.playerId]) {
+        ratingsMap[item.playerId] = [];
       }
-      summaryMap[item.playerId].ratings.push([
+      ratingsMap[item.playerId].push([
         item.attitude,
         item.effort,
         item.footballIQ,
@@ -655,19 +651,41 @@ export async function handler(event: Event): Promise<Result> {
       ]);
     }
 
-    const summary = Object.entries(summaryMap).map(([playerId, data]) => {
-      const count = data.ratings.length;
-      const avgAttitude = data.ratings.reduce((s, r) => s + r[0], 0) / count;
-      const avgEffort = data.ratings.reduce((s, r) => s + r[1], 0) / count;
-      const avgFootballIQ = data.ratings.reduce((s, r) => s + r[2], 0) / count;
-      const avgGeneralSkill = data.ratings.reduce((s, r) => s + r[3], 0) / count;
-      const avgPositionSkill = data.ratings.reduce((s, r) => s + r[4], 0) / count;
+    // Start from ALL players and merge evaluation data
+    const summary = playerItems.map((player) => {
+      const ratings = ratingsMap[player.id] || [];
+      const count = ratings.length;
+
+      if (count === 0) {
+        return {
+          playerId: player.id,
+          playerName: player.name || 'Unknown',
+          playerNumber: player.number || '',
+          primaryPosition: player.primaryPosition || '',
+          secondaryPosition: player.secondaryPosition || '',
+          evaluationCount: 0,
+          avgAttitude: 0,
+          avgEffort: 0,
+          avgFootballIQ: 0,
+          avgGeneralSkill: 0,
+          avgPositionSkill: 0,
+          avgTotal: 0,
+        };
+      }
+
+      const avgAttitude = ratings.reduce((s, r) => s + r[0], 0) / count;
+      const avgEffort = ratings.reduce((s, r) => s + r[1], 0) / count;
+      const avgFootballIQ = ratings.reduce((s, r) => s + r[2], 0) / count;
+      const avgGeneralSkill = ratings.reduce((s, r) => s + r[3], 0) / count;
+      const avgPositionSkill = ratings.reduce((s, r) => s + r[4], 0) / count;
       const avgTotal = avgAttitude + avgEffort + avgFootballIQ + avgGeneralSkill + avgPositionSkill;
 
       return {
-        playerId,
-        playerName: data.player?.name || 'Unknown',
-        playerNumber: data.player?.number || '',
+        playerId: player.id,
+        playerName: player.name || 'Unknown',
+        playerNumber: player.number || '',
+        primaryPosition: player.primaryPosition || '',
+        secondaryPosition: player.secondaryPosition || '',
         evaluationCount: count,
         avgAttitude: Math.round(avgAttitude * 10) / 10,
         avgEffort: Math.round(avgEffort * 10) / 10,
@@ -679,6 +697,48 @@ export async function handler(event: Event): Promise<Result> {
     });
 
     return json(200, { summary });
+  }
+
+  // POST /evaluations/analysis - Compute normalized analysis (POST to accept excludedCoachIds)
+  if (method === 'POST' && path === '/evaluations/analysis') {
+    const body = parseBody(event);
+    const excludedCoachIds: string[] = body.excludedCoachIds || [];
+
+    const evalItems = await queryItems(`TEAM#${teamId}`, 'EVAL#');
+    const playerItems = await queryItems(`TEAM#${teamId}`, 'PLAYER#');
+    const coachItems = await queryItems(`TEAM#${teamId}`, 'COACH#');
+
+    const evaluationsData = evalItems.map((item) => ({
+      coachId: item.coachId,
+      playerId: item.playerId,
+      attitude: item.attitude,
+      effort: item.effort,
+      footballIQ: item.footballIQ,
+      generalSkill: item.generalSkill,
+      positionSkill: item.positionSkill,
+      totalScore: item.totalScore,
+    }));
+
+    const playersData = playerItems.map((p) => ({
+      id: p.id,
+      name: p.name,
+      number: p.number,
+    }));
+
+    const coachesData = coachItems.map((c) => ({
+      id: c.id,
+      name: c.name,
+    }));
+
+    const analysis = computeAnalysis(evaluationsData, playersData, coachesData, excludedCoachIds, isLead);
+
+    // Non-leads don't get coach reliability data
+    if (!isLead) {
+      analysis.coachReliability = [];
+      analysis.playerImpactWarnings = [];
+    }
+
+    return json(200, analysis);
   }
 
   // GET /evaluations/player/:playerId - Detailed evaluations for a player (lead only)
