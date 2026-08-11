@@ -424,3 +424,122 @@ function roundRecord(rec: Record<string, number>): Record<string, number> {
   }
   return result;
 }
+
+// === Per-player normalized evaluations (for player detail view) ===
+
+export interface NormalizedIndividualEval {
+  coachId: string;
+  coachName: string;
+  raw: {
+    attitude: number;
+    effort: number;
+    footballIQ: number;
+    generalSkill: number;
+    positionSkill: number;
+    totalScore: number;
+  };
+  normalized: {
+    attitude: number;
+    effort: number;
+    footballIQ: number;
+    generalSkill: number;
+    positionSkill: number;
+    totalScore: number;
+  };
+}
+
+/**
+ * Computes the per-coach normalized evaluations for a specific player.
+ * Uses the same z-score normalization as computeAnalysis.
+ */
+export function computePlayerNormalizedEvals(
+  allEvaluations: RawEvaluation[],
+  playerId: string,
+  coaches: CoachInfo[],
+  excludedCoachIds: string[]
+): NormalizedIndividualEval[] {
+  const excludedSet = new Set(excludedCoachIds);
+  const coachMap = new Map(coaches.map((c) => [c.id, c]));
+
+  // Filtered evaluations (excluding removed coaches)
+  const filteredEvals = allEvaluations.filter((e) => !excludedSet.has(e.coachId));
+
+  // Group by coach
+  const evalsByCoach = new Map<string, RawEvaluation[]>();
+  for (const ev of filteredEvals) {
+    const arr = evalsByCoach.get(ev.coachId) || [];
+    arr.push(ev);
+    evalsByCoach.set(ev.coachId, arr);
+  }
+
+  // Compute per-coach stats
+  const coachStats = new Map<string, { categories: Record<RatingCategory, CoachCategoryStats>; total: CoachCategoryStats }>();
+  for (const [coachId, coachEvals] of evalsByCoach) {
+    const categoryStats: Record<string, CoachCategoryStats> = {} as any;
+    for (const cat of CATEGORIES) {
+      const values = coachEvals.map((e) => e[cat]);
+      categoryStats[cat] = { mean: mean(values), stddev: stddev(values) };
+    }
+    const totalValues = coachEvals.map((e) => e.totalScore);
+    coachStats.set(coachId, {
+      categories: categoryStats as Record<RatingCategory, CoachCategoryStats>,
+      total: { mean: mean(totalValues), stddev: stddev(totalValues) },
+    });
+  }
+
+  // Compute league-wide stats
+  const leagueStats: Record<string, { mean: number; stddev: number }> = {};
+  for (const cat of CATEGORIES) {
+    const allValues = filteredEvals.map((e) => e[cat]);
+    leagueStats[cat] = { mean: mean(allValues), stddev: stddev(allValues) };
+  }
+  const allTotals = filteredEvals.map((e) => e.totalScore);
+  leagueStats['total'] = { mean: mean(allTotals), stddev: stddev(allTotals) };
+
+  // Get evaluations for this specific player
+  const playerEvals = filteredEvals.filter((e) => e.playerId === playerId);
+
+  return playerEvals.map((ev) => {
+    const stats = coachStats.get(ev.coachId);
+    const coach = coachMap.get(ev.coachId);
+
+    const normalized: Record<string, number> = {} as any;
+    for (const cat of CATEGORIES) {
+      if (stats && stats.categories[cat].stddev > 0 && leagueStats[cat].stddev > 0) {
+        const z = (ev[cat] - stats.categories[cat].mean) / stats.categories[cat].stddev;
+        normalized[cat] = round2(leagueStats[cat].mean + z * leagueStats[cat].stddev);
+      } else {
+        normalized[cat] = ev[cat];
+      }
+    }
+
+    let normalizedTotal: number;
+    if (stats && stats.total.stddev > 0 && leagueStats['total'].stddev > 0) {
+      const zTotal = (ev.totalScore - stats.total.mean) / stats.total.stddev;
+      normalizedTotal = round2(leagueStats['total'].mean + zTotal * leagueStats['total'].stddev);
+    } else {
+      normalizedTotal = ev.totalScore;
+    }
+
+    return {
+      coachId: ev.coachId,
+      coachName: coach?.name || 'Unknown',
+      raw: {
+        attitude: ev.attitude,
+        effort: ev.effort,
+        footballIQ: ev.footballIQ,
+        generalSkill: ev.generalSkill,
+        positionSkill: ev.positionSkill,
+        totalScore: ev.totalScore,
+      },
+      normalized: {
+        attitude: normalized['attitude'],
+        effort: normalized['effort'],
+        footballIQ: normalized['footballIQ'],
+        generalSkill: normalized['generalSkill'],
+        positionSkill: normalized['positionSkill'],
+        totalScore: normalizedTotal,
+      },
+    };
+  });
+}
