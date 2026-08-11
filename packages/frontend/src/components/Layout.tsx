@@ -64,6 +64,7 @@ export default function Layout() {
             <>
               <NavLink to="/coach/rate" current={location.pathname}>Rate Players</NavLink>
               <NavLink to="/coach/results" current={location.pathname}>Results</NavLink>
+              <NavLink to="/coach/analysis" current={location.pathname}>Analysis</NavLink>
             </>
           )}
         </div>

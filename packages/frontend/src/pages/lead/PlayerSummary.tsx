@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { evaluations, players as playersApi } from '../../api';
+import { evaluations, players as playersApi, coaches as coachesApi } from '../../api';
 import { RATING_LABELS } from './ratingLabels';
 
 interface PlayerEval {
@@ -28,9 +28,12 @@ export default function PlayerSummary() {
   const [evalData, setEvalData] = useState<PlayerEval[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [anonymize, setAnonymize] = useState(true);
+  const [coachNameMap, setCoachNameMap] = useState<Map<string, string>>(new Map());
 
   useEffect(() => {
     loadPlayers();
+    loadCoachesForAnonymization();
   }, []);
 
   useEffect(() => {
@@ -42,15 +45,35 @@ export default function PlayerSummary() {
   const loadPlayers = async () => {
     try {
       const data = await playersApi.list();
-      setPlayerList(data.players);
-      if (!selectedPlayer && data.players.length > 0) {
-        setSelectedPlayer(data.players[0].id);
+      const sorted = [...data.players].sort((a: Player, b: Player) => a.name.localeCompare(b.name));
+      setPlayerList(sorted);
+      if (!selectedPlayer && sorted.length > 0) {
+        setSelectedPlayer(sorted[0].id);
       }
     } catch (err: any) {
       setError(err.message);
     } finally {
       setLoading(false);
     }
+  };
+
+  const loadCoachesForAnonymization = async () => {
+    try {
+      const data = await coachesApi.list();
+      const sortedCoaches = [...data.coaches].sort((a: any, b: any) => a.name.localeCompare(b.name));
+      const map = new Map<string, string>();
+      sortedCoaches.forEach((c: any, i: number) => {
+        map.set(c.id, `Coach ${i + 1}`);
+      });
+      setCoachNameMap(map);
+    } catch {
+      // Ignore - will fall back to real names
+    }
+  };
+
+  const getCoachDisplayName = (coachId: string, realName: string) => {
+    if (!anonymize) return realName;
+    return coachNameMap.get(coachId) || realName;
   };
 
   const loadEvaluations = async (pid: string) => {
@@ -96,20 +119,31 @@ export default function PlayerSummary() {
       )}
 
       {/* Player selector */}
-      <div className="mb-6">
-        <label className="block text-sm font-medium text-gray-700 mb-2">Select Player</label>
-        <select
-          value={selectedPlayer}
-          onChange={(e) => handlePlayerSelect(e.target.value)}
-          className="px-3 py-2 border border-gray-300 rounded w-64"
-        >
-          <option value="">-- Select a player --</option>
-          {playerList.map((p) => (
-            <option key={p.id} value={p.id}>
-              #{p.number} {p.name}
-            </option>
-          ))}
-        </select>
+      <div className="mb-6 flex items-center gap-4">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-2">Select Player</label>
+          <select
+            value={selectedPlayer}
+            onChange={(e) => handlePlayerSelect(e.target.value)}
+            className="px-3 py-2 border border-gray-300 rounded w-64"
+          >
+            <option value="">-- Select a player --</option>
+            {playerList.map((p) => (
+              <option key={p.id} value={p.id}>
+                #{p.number} {p.name}
+              </option>
+            ))}
+          </select>
+        </div>
+        <label className="inline-flex items-center gap-2 text-sm cursor-pointer mt-6">
+          <input
+            type="checkbox"
+            checked={anonymize}
+            onChange={(e) => setAnonymize(e.target.checked)}
+            className="rounded border-gray-300"
+          />
+          <span className="text-gray-600">Anonymize coaches</span>
+        </label>
       </div>
 
       {selectedPlayer && selectedPlayerData && (
@@ -137,7 +171,7 @@ export default function PlayerSummary() {
                 <tbody className="divide-y divide-gray-200">
                   {evalData.map((ev, i) => (
                     <tr key={i} className="hover:bg-gray-50">
-                      <td className="px-4 py-3 text-sm font-medium">{ev.coachName}</td>
+                      <td className="px-4 py-3 text-sm font-medium">{getCoachDisplayName(ev.coachId, ev.coachName)}</td>
                       <td className="px-4 py-3 text-sm text-center">{ev.attitude}</td>
                       <td className="px-4 py-3 text-sm text-center">{ev.effort}</td>
                       <td className="px-4 py-3 text-sm text-center">{ev.footballIQ}</td>

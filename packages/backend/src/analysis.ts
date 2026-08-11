@@ -26,6 +26,8 @@ interface PlayerInfo {
   id: string;
   name: string;
   number: string;
+  primaryPosition: string;
+  secondaryPosition: string;
 }
 
 interface CoachInfo {
@@ -261,6 +263,8 @@ export function computeAnalysis(
       playerId,
       playerName: player.name,
       playerNumber: player.number,
+      primaryPosition: player.primaryPosition || '',
+      secondaryPosition: player.secondaryPosition || '',
       evaluationCount: playerNormEvals.length,
       rawTotal: mean(rawPlayerEvals.map((e) => e.totalScore)),
       normalizedTotal: round2(avgNormalizedTotal),

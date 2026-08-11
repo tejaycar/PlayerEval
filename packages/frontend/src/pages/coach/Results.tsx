@@ -1,39 +1,31 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { evaluations } from '../../api';
+import { evaluations, team } from '../../api';
+import type { NormalizedPlayerScore, RatingCategory } from '@player-eval/shared';
 
-interface PlayerSummary {
-  playerId: string;
-  playerName: string;
-  playerNumber: string;
-  primaryPosition: string;
-  secondaryPosition: string;
-  evaluationCount: number;
-  avgAttitude: number;
-  avgEffort: number;
-  avgFootballIQ: number;
-  avgGeneralSkill: number;
-  avgPositionSkill: number;
-  avgTotal: number;
-}
+type SortField = 'normalizedTotal' | 'attitude' | 'effort' | 'footballIQ' | 'generalSkill' | 'positionSkill';
 
 const STRING_FIELDS = new Set(['playerName', 'playerNumber', 'primaryPosition', 'secondaryPosition']);
 
 export default function Results() {
-  const [summary, setSummary] = useState<PlayerSummary[]>([]);
+  const [rankings, setRankings] = useState<NormalizedPlayerScore[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [sortBy, setSortBy] = useState<string>('avgTotal');
+  const [sortBy, setSortBy] = useState<SortField>('normalizedTotal');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const [positionFilter, setPositionFilter] = useState<string>('');
 
   useEffect(() => {
-    loadSummary();
+    loadResults();
   }, []);
 
-  const loadSummary = async () => {
+  const loadResults = async () => {
     try {
-      const data = await evaluations.summary();
-      setSummary(data.summary);
+      // Load the lead's saved exclusions
+      const exclusionData = await team.getExcludedCoaches();
+      const excludedIds = exclusionData.excludedCoachIds || [];
+      // Get analysis with those exclusions
+      const data = await evaluations.analysis(excludedIds);
+      setRankings(data.playerRankings);
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -41,53 +33,59 @@ export default function Results() {
     }
   };
 
-  const handleSort = (field: string) => {
+  const handleSort = (field: SortField) => {
     if (sortBy === field) {
       setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
     } else {
       setSortBy(field);
-      setSortDir(STRING_FIELDS.has(field) ? 'asc' : 'desc');
+      setSortDir('desc');
     }
   };
 
   const uniquePositions = useMemo(() => {
     const positions = new Set<string>();
-    summary.forEach((player) => {
+    rankings.forEach((player) => {
       if (player.primaryPosition) positions.add(player.primaryPosition);
       if (player.secondaryPosition) positions.add(player.secondaryPosition);
     });
     return Array.from(positions).sort();
-  }, [summary]);
+  }, [rankings]);
 
-  const filteredSummary = useMemo(() => {
-    if (!positionFilter) return summary;
-    return summary.filter(
+  const filteredRankings = useMemo(() => {
+    if (!positionFilter) return rankings;
+    return rankings.filter(
       (player) =>
         player.primaryPosition === positionFilter ||
         player.secondaryPosition === positionFilter
     );
-  }, [summary, positionFilter]);
+  }, [rankings, positionFilter]);
 
-  const sortedSummary = [...filteredSummary].sort((a: any, b: any) => {
-    const aVal = a[sortBy];
-    const bVal = b[sortBy];
-    if (STRING_FIELDS.has(sortBy)) {
-      const cmp = String(aVal || '').localeCompare(String(bVal || ''));
-      return sortDir === 'asc' ? cmp : -cmp;
+  const sorted = [...filteredRankings].sort((a, b) => {
+    let aVal: number, bVal: number;
+    if (sortBy === 'normalizedTotal') {
+      aVal = a.normalizedTotal;
+      bVal = b.normalizedTotal;
+    } else {
+      aVal = a.categories[sortBy];
+      bVal = b.categories[sortBy];
     }
     return sortDir === 'asc' ? aVal - bVal : bVal - aVal;
   });
 
-  const formatScore = (value: number, evalCount: number) => {
-    if (evalCount === 0) return '--';
-    return value;
-  };
+  const SortHeader = ({ field, label }: { field: SortField; label: string }) => (
+    <th
+      className="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase cursor-pointer hover:text-gray-700"
+      onClick={() => handleSort(field)}
+    >
+      {label} {sortBy === field && (sortDir === 'asc' ? '↑' : '↓')}
+    </th>
+  );
 
   if (loading) return <div className="text-center py-8">Loading results...</div>;
 
   return (
     <div>
-      <h2 className="text-2xl font-bold mb-6">Results Summary</h2>
+      <h2 className="text-2xl font-bold mb-6">Player Rankings</h2>
 
       {error && (
         <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded mb-4">
@@ -114,66 +112,48 @@ export default function Results() {
         </select>
       </div>
 
-      <div className="overflow-x-auto">
-        <table className="w-full bg-white rounded-lg shadow-sm border">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">#</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Player</th>
-              <SortHeader field="primaryPosition" label="Primary Pos" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
-              <SortHeader field="secondaryPosition" label="Secondary Pos" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
-              <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Evals</th>
-              <SortHeader field="avgAttitude" label="Attitude" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
-              <SortHeader field="avgEffort" label="Effort" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
-              <SortHeader field="avgFootballIQ" label="Football IQ" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
-              <SortHeader field="avgGeneralSkill" label="General Skill" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
-              <SortHeader field="avgPositionSkill" label="Position Skill" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
-              <SortHeader field="avgTotal" label="Total" sortBy={sortBy} sortDir={sortDir} onSort={handleSort} />
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-200">
-            {sortedSummary.map((player) => (
-              <tr key={player.playerId} className="hover:bg-gray-50">
-                <td className="px-4 py-3 text-sm text-gray-500">{player.playerNumber}</td>
-                <td className="px-4 py-3 text-sm font-medium">{player.playerName}</td>
-                <td className="px-4 py-3 text-sm text-center">{player.primaryPosition || '--'}</td>
-                <td className="px-4 py-3 text-sm text-center">{player.secondaryPosition || '--'}</td>
-                <td className="px-4 py-3 text-sm text-center">{player.evaluationCount}</td>
-                <td className="px-4 py-3 text-sm text-center">{formatScore(player.avgAttitude, player.evaluationCount)}</td>
-                <td className="px-4 py-3 text-sm text-center">{formatScore(player.avgEffort, player.evaluationCount)}</td>
-                <td className="px-4 py-3 text-sm text-center">{formatScore(player.avgFootballIQ, player.evaluationCount)}</td>
-                <td className="px-4 py-3 text-sm text-center">{formatScore(player.avgGeneralSkill, player.evaluationCount)}</td>
-                <td className="px-4 py-3 text-sm text-center">{formatScore(player.avgPositionSkill, player.evaluationCount)}</td>
-                <td className="px-4 py-3 text-sm text-center font-bold">{formatScore(player.avgTotal, player.evaluationCount)}</td>
+      {rankings.length === 0 ? (
+        <p className="text-gray-500">No evaluation data available yet.</p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full bg-white rounded-lg shadow-sm border text-sm">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Rank</th>
+                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">#</th>
+                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Player</th>
+                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Primary</th>
+                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Secondary</th>
+                <th className="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">Evals</th>
+                <SortHeader field="attitude" label="Attitude" />
+                <SortHeader field="effort" label="Effort" />
+                <SortHeader field="footballIQ" label="Football IQ" />
+                <SortHeader field="generalSkill" label="General" />
+                <SortHeader field="positionSkill" label="Position" />
+                <SortHeader field="normalizedTotal" label="Total" />
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody className="divide-y divide-gray-200">
+              {sorted.map((player, idx) => (
+                <tr key={player.playerId} className="hover:bg-gray-50">
+                  <td className="px-3 py-2 text-gray-400">{idx + 1}</td>
+                  <td className="px-3 py-2 text-gray-500">{player.playerNumber}</td>
+                  <td className="px-3 py-2 font-medium">{player.playerName}</td>
+                  <td className="px-3 py-2 text-gray-500">{player.primaryPosition || '--'}</td>
+                  <td className="px-3 py-2 text-gray-500">{player.secondaryPosition || '--'}</td>
+                  <td className="px-3 py-2 text-center text-gray-500">{player.evaluationCount}</td>
+                  <td className="px-3 py-2 text-center">{player.categories.attitude}</td>
+                  <td className="px-3 py-2 text-center">{player.categories.effort}</td>
+                  <td className="px-3 py-2 text-center">{player.categories.footballIQ}</td>
+                  <td className="px-3 py-2 text-center">{player.categories.generalSkill}</td>
+                  <td className="px-3 py-2 text-center">{player.categories.positionSkill}</td>
+                  <td className="px-3 py-2 text-center font-bold text-blue-700">{player.normalizedTotal}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
-  );
-}
-
-function SortHeader({
-  field,
-  label,
-  sortBy,
-  sortDir,
-  onSort,
-}: {
-  field: string;
-  label: string;
-  sortBy: string;
-  sortDir: 'asc' | 'desc';
-  onSort: (f: string) => void;
-}) {
-  const isActive = sortBy === field;
-  return (
-    <th
-      className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase cursor-pointer hover:text-gray-700"
-      onClick={() => onSort(field)}
-    >
-      {label} {isActive && (sortDir === 'asc' ? '↑' : '↓')}
-    </th>
   );
 }

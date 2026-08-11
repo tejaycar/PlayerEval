@@ -194,6 +194,21 @@ export async function handler(event: Event): Promise<Result> {
     return json(200, { team: teamMeta });
   }
 
+  // GET /team/excluded-coaches - Get persisted excluded coach IDs
+  if (method === 'GET' && path === '/team/excluded-coaches') {
+    const teamMeta = await getItem(`TEAM#${teamId}`, 'META');
+    return json(200, { excludedCoachIds: teamMeta?.excludedCoachIds || [] });
+  }
+
+  // PUT /team/excluded-coaches - Save excluded coach IDs (lead only)
+  if (method === 'PUT' && path === '/team/excluded-coaches') {
+    if (!isLead) return json(403, { error: 'Only leads can manage coach exclusions' });
+    const { excludedCoachIds: ids } = parseBody(event);
+    if (!Array.isArray(ids)) return json(400, { error: 'excludedCoachIds must be an array' });
+    await updateItem(`TEAM#${teamId}`, 'META', { excludedCoachIds: ids });
+    return json(200, { excludedCoachIds: ids });
+  }
+
   // POST /team - Create team (first time setup)
   if (method === 'POST' && path === '/team') {
     const { name } = parseBody(event);
@@ -723,6 +738,8 @@ export async function handler(event: Event): Promise<Result> {
       id: p.id,
       name: p.name,
       number: p.number,
+      primaryPosition: p.primaryPosition || '',
+      secondaryPosition: p.secondaryPosition || '',
     }));
 
     const coachesData = coachItems.map((c) => ({
@@ -732,10 +749,16 @@ export async function handler(event: Event): Promise<Result> {
 
     const analysis = computeAnalysis(evaluationsData, playersData, coachesData, excludedCoachIds, isLead);
 
-    // Non-leads don't get coach reliability data
+    // Non-leads don't get coach reliability data or raw scores
     if (!isLead) {
       analysis.coachReliability = [];
       analysis.playerImpactWarnings = [];
+      // Strip raw scores — coaches should only see normalized values
+      analysis.playerRankings = analysis.playerRankings.map((p) => ({
+        ...p,
+        rawTotal: 0,
+        rawCategories: { attitude: 0, effort: 0, footballIQ: 0, generalSkill: 0, positionSkill: 0 },
+      }));
     }
 
     return json(200, analysis);

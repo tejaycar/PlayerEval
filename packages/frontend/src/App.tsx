@@ -11,6 +11,7 @@ import CoachAssignment from './pages/lead/CoachAssignment';
 import Analysis from './pages/lead/Analysis';
 import RatePlayers from './pages/coach/RatePlayers';
 import Results from './pages/coach/Results';
+import CoachAnalysis from './pages/coach/Analysis';
 
 function ProtectedRoute({ children, requireLead = false }: { children: React.ReactNode; requireLead?: boolean }) {
   const token = getToken();
@@ -50,6 +51,7 @@ export default function App() {
         <Route index element={<Navigate to="/coach/rate" replace />} />
         <Route path="rate" element={<RatePlayers />} />
         <Route path="results" element={<Results />} />
+        <Route path="analysis" element={<CoachAnalysis />} />
       </Route>
       
       {/* Default redirect */}

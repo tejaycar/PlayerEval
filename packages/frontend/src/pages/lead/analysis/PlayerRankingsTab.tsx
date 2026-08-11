@@ -54,6 +54,8 @@ export default function PlayerRankingsTab({ rankings }: Props) {
             <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Rank</th>
             <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">#</th>
             <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Player</th>
+            <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Primary</th>
+            <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Secondary</th>
             <th className="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">Evals</th>
             <SortHeader field="attitude" label="Attitude" />
             <SortHeader field="effort" label="Effort" />
@@ -71,6 +73,8 @@ export default function PlayerRankingsTab({ rankings }: Props) {
               <td className="px-3 py-2 text-gray-400">{idx + 1}</td>
               <td className="px-3 py-2 text-gray-500">{player.playerNumber}</td>
               <td className="px-3 py-2 font-medium">{player.playerName}</td>
+              <td className="px-3 py-2 text-gray-500">{player.primaryPosition || '--'}</td>
+              <td className="px-3 py-2 text-gray-500">{player.secondaryPosition || '--'}</td>
               <td className="px-3 py-2 text-center text-gray-500">{player.evaluationCount}</td>
               <td className="px-3 py-2 text-center">{player.categories.attitude}</td>
               <td className="px-3 py-2 text-center">{player.categories.effort}</td>
