@@ -31,17 +31,20 @@ export default function CoachAnalysis() {
       const coachData = await coachesApi.list();
       setCoachList(coachData.coaches.map((c: any) => ({ id: c.id, name: c.name })));
 
-      // Load the lead's saved exclusions and apply them (always "exclude flagged")
-      const [coachExclusionData, ratingsData] = await Promise.all([
+      // Load the lead's saved exclusions and mode
+      const [coachExclusionData, ratingsData, modeData] = await Promise.all([
         team.getExcludedCoaches(),
         team.getExcludedRatings(),
+        team.getExclusionMode(),
       ]);
-      const excludedIds = coachExclusionData.excludedCoachIds || [];
-      const excludedRatingsData = ratingsData.excludedRatings || [];
-      setExcludedCoachIds(excludedIds);
-      setExcludedRatings(excludedRatingsData);
+      const savedMode = modeData.exclusionMode || 'exclude_flagged';
+      const excludedIds = savedMode === 'include_all' ? [] : (coachExclusionData.excludedCoachIds || []);
+      const excludedRatingsData = savedMode === 'include_all' ? [] : (ratingsData.excludedRatings || []);
+      // Always store the full exclusion lists for visual indicators
+      setExcludedCoachIds(coachExclusionData.excludedCoachIds || []);
+      setExcludedRatings(ratingsData.excludedRatings || []);
 
-      // Get analysis with those exclusions
+      // Get analysis with exclusions based on mode
       const data = await evaluations.analysis(excludedIds, excludedRatingsData);
       setBoxPlots(data.boxPlots);
       setCoachReliability(data.coachReliability);

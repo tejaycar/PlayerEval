@@ -365,6 +365,43 @@ export function computeAnalysis(
         isExcluded: false,
         playerDeviations: deviations,
       });
+
+      // Also include individually-excluded ratings for this coach (for display purposes)
+      // These are ratings that were excluded individually but the coach itself is still included
+      const excludedForThisCoach = evaluations.filter(
+        (e) => e.coachId === coachId && excludedRatingKeys.has(`${e.coachId}|${e.playerId}`)
+      );
+      if (excludedForThisCoach.length > 0) {
+        const lastEntry = coachReliability[coachReliability.length - 1];
+        // Normalize these excluded ratings using the coach's stats (from included evals)
+        const stats = coachStats.get(coachId);
+        for (const ev of excludedForThisCoach) {
+          if (!stats) continue;
+          let normalizedTotal: number;
+          if (stats.total.stddev > 0 && leagueStats['total'].stddev > 0) {
+            const zTotal = (ev.totalScore - stats.total.mean) / stats.total.stddev;
+            normalizedTotal = leagueStats['total'].mean + zTotal * leagueStats['total'].stddev;
+          } else {
+            normalizedTotal = ev.totalScore;
+          }
+
+          const playerMed = playerMedians.get(ev.playerId);
+          const playerMn = playerMeans.get(ev.playerId);
+          if (playerMed === undefined || playerMn === undefined) continue;
+
+          const player = playerMap.get(ev.playerId);
+          lastEntry.playerDeviations.push({
+            playerId: ev.playerId,
+            playerName: player?.name || 'Unknown',
+            playerNumber: player?.number || '',
+            coachNormalized: round2(normalizedTotal),
+            medianNormalized: round2(playerMed),
+            meanNormalized: round2(playerMn),
+            deviation: round2(normalizedTotal - playerMed),
+            isExcluded: true,
+          });
+        }
+      }
     }
 
     // Process excluded coaches: compute their metrics against the filtered data

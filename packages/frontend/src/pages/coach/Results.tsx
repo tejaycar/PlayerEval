@@ -18,14 +18,16 @@ export default function Results() {
 
   const loadResults = async () => {
     try {
-      // Load the lead's saved exclusions
-      const [coachExclusionData, ratingsData] = await Promise.all([
+      // Load the lead's saved exclusions and mode
+      const [coachExclusionData, ratingsData, modeData] = await Promise.all([
         team.getExcludedCoaches(),
         team.getExcludedRatings(),
+        team.getExclusionMode(),
       ]);
-      const excludedIds = coachExclusionData.excludedCoachIds || [];
-      const excludedRatings = ratingsData.excludedRatings || [];
-      // Get analysis with those exclusions
+      const savedMode = modeData.exclusionMode || 'exclude_flagged';
+      const excludedIds = savedMode === 'include_all' ? [] : (coachExclusionData.excludedCoachIds || []);
+      const excludedRatings = savedMode === 'include_all' ? [] : (ratingsData.excludedRatings || []);
+      // Get analysis with exclusions based on mode
       const data = await evaluations.analysis(excludedIds, excludedRatings);
       setRankings(data.playerRankings);
     } catch (err: any) {

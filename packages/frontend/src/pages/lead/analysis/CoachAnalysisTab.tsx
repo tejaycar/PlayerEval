@@ -156,7 +156,7 @@ export default function CoachAnalysisTab({ reliability, excludedCoachIds, exclud
                               {coach.playerDeviations
                                 .sort((a, b) => Math.abs(b.deviation) - Math.abs(a.deviation))
                                 .map((pd) => {
-                                  const ratingExcluded = isRatingExcluded(coach.coachId, pd.playerId);
+                                  const ratingExcluded = pd.isExcluded || isRatingExcluded(coach.coachId, pd.playerId);
                                   return (
                                   <tr key={pd.playerId} className={`border-t border-gray-200 ${ratingExcluded ? 'bg-red-50' : ''}`}>
                                     <td className={`px-2 py-1 ${ratingExcluded ? 'text-red-400' : ''}`}>

@@ -69,6 +69,7 @@ export interface PlayerDeviation {
   medianNormalized: number;
   meanNormalized: number;
   deviation: number; // coach - median
+  isExcluded?: boolean; // true if this individual rating was excluded
 }
 
 // === Player Impact Warning (for coach exclusion) ===
