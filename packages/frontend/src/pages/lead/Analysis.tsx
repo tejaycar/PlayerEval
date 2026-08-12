@@ -36,7 +36,16 @@ export default function Analysis() {
 
   useEffect(() => {
     loadAnalysis();
-  }, [excludedCoachIds, excludedRatings, exclusionMode]);
+  }, [excludedCoachIds, exclusionMode]);
+
+  // Re-fetch analysis when leaving the exclusions tab (picks up any changes made there)
+  const prevTabRef = React.useRef<TabId>(activeTab);
+  useEffect(() => {
+    if (prevTabRef.current === 'exclusions' && activeTab !== 'exclusions') {
+      loadAnalysis();
+    }
+    prevTabRef.current = activeTab;
+  }, [activeTab]);
 
 
   const loadCoaches = async () => {
