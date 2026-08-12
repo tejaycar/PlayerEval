@@ -123,9 +123,11 @@ export function computeAnalysis(
   players: PlayerInfo[],
   coaches: CoachInfo[],
   excludedCoachIds: string[],
+  excludedRatings: Array<{coachId: string; playerId: string}>,
   isLead: boolean
 ): AnalysisResponse {
   const excludedSet = new Set(excludedCoachIds);
+  const excludedRatingKeys = new Set(excludedRatings.map(r => `${r.coachId}|${r.playerId}`));
   const playerMap = new Map(players.map((p) => [p.id, p]));
   const coachMap = new Map(coaches.map((c) => [c.id, c]));
 
@@ -137,8 +139,8 @@ export function computeAnalysis(
     allEvalsByPlayer.set(ev.playerId, arr);
   }
 
-  // Filtered evaluations (excluding removed coaches)
-  const filteredEvals = evaluations.filter((e) => !excludedSet.has(e.coachId));
+  // Filtered evaluations (excluding removed coaches AND individual excluded ratings)
+  const filteredEvals = evaluations.filter((e) => !excludedSet.has(e.coachId) && !excludedRatingKeys.has(`${e.coachId}|${e.playerId}`));
 
   // Group by coach for Z-score computation
   const evalsByCoach = new Map<string, RawEvaluation[]>();
@@ -299,11 +301,10 @@ export function computeAnalysis(
   // Sort box plots by IQR descending (most controversial first)
   boxPlots.sort((a, b) => b.iqr - a.iqr);
 
-  // === Step 5: Coach reliability (lead only) ===
+  // === Step 5: Coach reliability ===
   let coachReliability: CoachReliabilityMetrics[] = [];
 
-  if (isLead) {
-    // For each player, compute median and mean of normalized totals
+  // For each player, compute median and mean of normalized totals
     const playerMedians = new Map<string, number>();
     const playerMeans = new Map<string, number>();
 
@@ -313,6 +314,7 @@ export function computeAnalysis(
       playerMeans.set(playerId, mean(totals));
     }
 
+    // Process included coaches (from evalsByCoach - filtered evals)
     for (const [coachId, coachEvals] of evalsByCoach) {
       const coach = coachMap.get(coachId);
       if (!coach) continue;
@@ -360,24 +362,161 @@ export function computeAnalysis(
         madFromMedian: round2(mean(absDeviationsFromMedian)),
         meanDeviationFromMean: round2(mean(deviationsFromMean)),
         rankCorrelation: rankCorr,
+        isExcluded: false,
+        playerDeviations: deviations,
+      });
+
+      // Also include individually-excluded ratings for this coach (for display purposes)
+      // These are ratings that were excluded individually but the coach itself is still included
+      const excludedForThisCoach = evaluations.filter(
+        (e) => e.coachId === coachId && excludedRatingKeys.has(`${e.coachId}|${e.playerId}`)
+      );
+      if (excludedForThisCoach.length > 0) {
+        const lastEntry = coachReliability[coachReliability.length - 1];
+        // Normalize these excluded ratings using the coach's stats (from included evals)
+        const stats = coachStats.get(coachId);
+        for (const ev of excludedForThisCoach) {
+          if (!stats) continue;
+          let normalizedTotal: number;
+          if (stats.total.stddev > 0 && leagueStats['total'].stddev > 0) {
+            const zTotal = (ev.totalScore - stats.total.mean) / stats.total.stddev;
+            normalizedTotal = leagueStats['total'].mean + zTotal * leagueStats['total'].stddev;
+          } else {
+            normalizedTotal = ev.totalScore;
+          }
+
+          const playerMed = playerMedians.get(ev.playerId);
+          const playerMn = playerMeans.get(ev.playerId);
+          if (playerMed === undefined || playerMn === undefined) continue;
+
+          const player = playerMap.get(ev.playerId);
+          lastEntry.playerDeviations.push({
+            playerId: ev.playerId,
+            playerName: player?.name || 'Unknown',
+            playerNumber: player?.number || '',
+            coachNormalized: round2(normalizedTotal),
+            medianNormalized: round2(playerMed),
+            meanNormalized: round2(playerMn),
+            deviation: round2(normalizedTotal - playerMed),
+            isExcluded: true,
+          });
+        }
+      }
+    }
+
+    // Process excluded coaches: compute their metrics against the filtered data
+    const excludedCoachEvals = new Map<string, RawEvaluation[]>();
+    for (const ev of evaluations) {
+      if (excludedSet.has(ev.coachId) && !evalsByCoach.has(ev.coachId)) {
+        const arr = excludedCoachEvals.get(ev.coachId) || [];
+        arr.push(ev);
+        excludedCoachEvals.set(ev.coachId, arr);
+      }
+    }
+
+    for (const [coachId, coachEvals] of excludedCoachEvals) {
+      const coach = coachMap.get(coachId);
+      if (!coach) continue;
+
+      // Compute per-coach stats for the excluded coach from their own evaluations
+      const excCategoryStats: Record<string, CoachCategoryStats> = {} as any;
+      for (const cat of CATEGORIES) {
+        const values = coachEvals.map((e) => e[cat]);
+        excCategoryStats[cat] = { mean: mean(values), stddev: stddev(values) };
+      }
+      const excTotalValues = coachEvals.map((e) => e.totalScore);
+      const excTotalStats = { mean: mean(excTotalValues), stddev: stddev(excTotalValues) };
+
+      // Normalize their evaluations using league stats (computed from filtered evals)
+      const excNormEvals: NormalizedEval[] = [];
+      for (const ev of coachEvals) {
+        const normalizedCategories: Record<string, number> = {} as any;
+        for (const cat of CATEGORIES) {
+          const catStats = excCategoryStats[cat];
+          const leagueCat = leagueStats[cat];
+          if (catStats.stddev > 0 && leagueCat.stddev > 0) {
+            const z = (ev[cat] - catStats.mean) / catStats.stddev;
+            normalizedCategories[cat] = leagueCat.mean + z * leagueCat.stddev;
+          } else {
+            normalizedCategories[cat] = ev[cat];
+          }
+        }
+
+        let normalizedTotal: number;
+        if (excTotalStats.stddev > 0 && leagueStats['total'].stddev > 0) {
+          const zTotal = (ev.totalScore - excTotalStats.mean) / excTotalStats.stddev;
+          normalizedTotal = leagueStats['total'].mean + zTotal * leagueStats['total'].stddev;
+        } else {
+          normalizedTotal = ev.totalScore;
+        }
+
+        excNormEvals.push({
+          coachId: ev.coachId,
+          playerId: ev.playerId,
+          normalizedTotal,
+          normalizedCategories: normalizedCategories as Record<RatingCategory, number>,
+        });
+      }
+
+      // Compute deviations against playerMedians/playerMeans (from filtered data)
+      const deviations: PlayerDeviation[] = [];
+      const absDeviationsFromMedian: number[] = [];
+      const deviationsFromMean: number[] = [];
+      const coachScores: number[] = [];
+      const consensusScores: number[] = [];
+
+      for (const ne of excNormEvals) {
+        const playerMed = playerMedians.get(ne.playerId);
+        const playerMean = playerMeans.get(ne.playerId);
+        if (playerMed === undefined || playerMean === undefined) continue;
+
+        const devFromMedian = ne.normalizedTotal - playerMed;
+        const devFromMean = ne.normalizedTotal - playerMean;
+
+        absDeviationsFromMedian.push(Math.abs(devFromMedian));
+        deviationsFromMean.push(devFromMean);
+        coachScores.push(ne.normalizedTotal);
+        consensusScores.push(playerMed);
+
+        const player = playerMap.get(ne.playerId);
+        deviations.push({
+          playerId: ne.playerId,
+          playerName: player?.name || 'Unknown',
+          playerNumber: player?.number || '',
+          coachNormalized: round2(ne.normalizedTotal),
+          medianNormalized: round2(playerMed),
+          meanNormalized: round2(playerMean),
+          deviation: round2(devFromMedian),
+        });
+      }
+
+      const rankCorr = spearmanRankCorrelation(coachScores, consensusScores);
+
+      coachReliability.push({
+        coachId,
+        coachName: coach.name,
+        playersRated: deviations.length,
+        madFromMedian: round2(mean(absDeviationsFromMedian)),
+        meanDeviationFromMean: round2(mean(deviationsFromMean)),
+        rankCorrelation: rankCorr,
+        isExcluded: true,
         playerDeviations: deviations,
       });
     }
 
     // Sort by MAD ascending (most reliable first)
     coachReliability.sort((a, b) => a.madFromMedian - b.madFromMedian);
-  }
 
   // === Step 6: Player impact warnings ===
   const playerImpactWarnings: PlayerImpactWarning[] = [];
 
-  if (excludedCoachIds.length > 0) {
+  if (excludedCoachIds.length > 0 || excludedRatings.length > 0) {
     for (const [playerId, allEvals] of allEvalsByPlayer) {
       const originalCount = allEvals.length;
-      const reducedCount = allEvals.filter((e) => !excludedSet.has(e.coachId)).length;
+      const reducedCount = allEvals.filter((e) => !excludedSet.has(e.coachId) && !excludedRatingKeys.has(`${e.coachId}|${e.playerId}`)).length;
       const droppedBy = originalCount - reducedCount;
 
-      if (droppedBy > 1) {
+      if (reducedCount < 5) {
         const player = playerMap.get(playerId);
         playerImpactWarnings.push({
           playerId,
@@ -399,6 +538,7 @@ export function computeAnalysis(
     totalCoaches: evalsByCoach.size,
     totalEvaluations: filteredEvals.length,
     excludedCoachIds,
+    excludedRatings,
     undifferentiatingCoaches,
   };
 

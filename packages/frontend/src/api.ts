@@ -27,7 +27,13 @@ export function getStoredUser(): { coachId: string; teamId: string; email: strin
 }
 
 export function setStoredUser(user: any) {
-  localStorage.setItem('playereval_user', JSON.stringify(user));
+  // Normalize: backend returns coach.id but we store as coachId
+  const normalized = { ...user };
+  if (normalized.id && !normalized.coachId) {
+    normalized.coachId = normalized.id;
+    delete normalized.id;
+  }
+  localStorage.setItem('playereval_user', JSON.stringify(normalized));
 }
 
 export function clearStoredUser() {
@@ -75,6 +81,10 @@ export const team = {
   create: (name: string) => request('POST', '/team', { name }),
   getExcludedCoaches: () => request('GET', '/team/excluded-coaches'),
   saveExcludedCoaches: (excludedCoachIds: string[]) => request('PUT', '/team/excluded-coaches', { excludedCoachIds }),
+  getExcludedRatings: () => request('GET', '/team/excluded-ratings'),
+  saveExcludedRatings: (excludedRatings: Array<{coachId: string, playerId: string}>) => request('PUT', '/team/excluded-ratings', { excludedRatings }),
+  getExclusionMode: () => request('GET', '/team/exclusion-mode'),
+  saveExclusionMode: (exclusionMode: string) => request('PUT', '/team/exclusion-mode', { exclusionMode }),
 };
 
 // Players
@@ -112,7 +122,7 @@ export const evaluations = {
   summary: () => request('GET', '/evaluations/summary'),
   playerDetail: (playerId: string) => request('GET', `/evaluations/player/${playerId}`),
   submit: (data: any) => request('POST', '/evaluations', data),
-  analysis: (excludedCoachIds?: string[]) => request('POST', '/evaluations/analysis', { excludedCoachIds: excludedCoachIds || [] }),
+  analysis: (excludedCoachIds?: string[], excludedRatings?: Array<{coachId: string, playerId: string}>) => request('POST', '/evaluations/analysis', { excludedCoachIds: excludedCoachIds || [], excludedRatings: excludedRatings || [] }),
 };
 
 // My Players (coach view)

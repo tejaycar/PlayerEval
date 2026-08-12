@@ -4,8 +4,6 @@ import type { NormalizedPlayerScore, RatingCategory } from '@player-eval/shared'
 
 type SortField = 'normalizedTotal' | 'attitude' | 'effort' | 'footballIQ' | 'generalSkill' | 'positionSkill';
 
-const STRING_FIELDS = new Set(['playerName', 'playerNumber', 'primaryPosition', 'secondaryPosition']);
-
 export default function Results() {
   const [rankings, setRankings] = useState<NormalizedPlayerScore[]>([]);
   const [loading, setLoading] = useState(true);
@@ -20,11 +18,17 @@ export default function Results() {
 
   const loadResults = async () => {
     try {
-      // Load the lead's saved exclusions
-      const exclusionData = await team.getExcludedCoaches();
-      const excludedIds = exclusionData.excludedCoachIds || [];
-      // Get analysis with those exclusions
-      const data = await evaluations.analysis(excludedIds);
+      // Load the lead's saved exclusions and mode
+      const [coachExclusionData, ratingsData, modeData] = await Promise.all([
+        team.getExcludedCoaches(),
+        team.getExcludedRatings(),
+        team.getExclusionMode(),
+      ]);
+      const savedMode = modeData.exclusionMode || 'exclude_flagged';
+      const excludedIds = savedMode === 'include_all' ? [] : (coachExclusionData.excludedCoachIds || []);
+      const excludedRatings = savedMode === 'include_all' ? [] : (ratingsData.excludedRatings || []);
+      // Get analysis with exclusions based on mode
+      const data = await evaluations.analysis(excludedIds, excludedRatings);
       setRankings(data.playerRankings);
     } catch (err: any) {
       setError(err.message);

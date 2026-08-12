@@ -195,6 +195,9 @@ export async function handler(event: Event): Promise<Result> {
   }
 
   // GET /team/excluded-coaches - Get persisted excluded coach IDs
+  // NOTE: Intentionally accessible to all authenticated team members (not just leads).
+  // The coach view always applies the lead's saved exclusions to produce consistent
+  // normalized scores, so coaches need to read this state to pass it to the analysis endpoint.
   if (method === 'GET' && path === '/team/excluded-coaches') {
     const teamMeta = await getItem(`TEAM#${teamId}`, 'META');
     return json(200, { excludedCoachIds: teamMeta?.excludedCoachIds || [] });
@@ -207,6 +210,43 @@ export async function handler(event: Event): Promise<Result> {
     if (!Array.isArray(ids)) return json(400, { error: 'excludedCoachIds must be an array' });
     await updateItem(`TEAM#${teamId}`, 'META', { excludedCoachIds: ids });
     return json(200, { excludedCoachIds: ids });
+  }
+
+  // GET /team/exclusion-mode - Get persisted exclusion mode
+  if (method === 'GET' && path === '/team/exclusion-mode') {
+    const teamMeta = await getItem(`TEAM#${teamId}`, 'META');
+    return json(200, { exclusionMode: teamMeta?.exclusionMode || 'exclude_flagged' });
+  }
+
+  // PUT /team/exclusion-mode - Save exclusion mode (lead only)
+  if (method === 'PUT' && path === '/team/exclusion-mode') {
+    if (!isLead) return json(403, { error: 'Only leads can manage exclusion mode' });
+    const { exclusionMode: mode } = parseBody(event);
+    if (mode !== 'include_all' && mode !== 'exclude_flagged') return json(400, { error: 'exclusionMode must be include_all or exclude_flagged' });
+    await updateItem(`TEAM#${teamId}`, 'META', { exclusionMode: mode });
+    return json(200, { exclusionMode: mode });
+  }
+
+  // GET /team/excluded-ratings - Get persisted excluded ratings
+  // NOTE: Intentionally accessible to all authenticated team members (not just leads).
+  // The coach view always applies the lead's saved exclusions to produce consistent
+  // normalized scores, so coaches need to read this state to pass it to the analysis endpoint.
+  if (method === 'GET' && path === '/team/excluded-ratings') {
+    const teamMeta = await getItem(`TEAM#${teamId}`, 'META');
+    return json(200, { excludedRatings: teamMeta?.excludedRatings || [] });
+  }
+
+  // PUT /team/excluded-ratings - Save excluded ratings (lead only)
+  if (method === 'PUT' && path === '/team/excluded-ratings') {
+    if (!isLead) return json(403, { error: 'Only leads can manage rating exclusions' });
+    const { excludedRatings } = parseBody(event);
+    if (!Array.isArray(excludedRatings)) return json(400, { error: 'excludedRatings must be an array' });
+    // Validate each element has string coachId and playerId, filter out invalid entries
+    const validRatings = excludedRatings.filter(
+      (r: any) => r && typeof r.coachId === 'string' && typeof r.playerId === 'string' && r.coachId.length > 0 && r.playerId.length > 0
+    );
+    await updateItem(`TEAM#${teamId}`, 'META', { excludedRatings: validRatings });
+    return json(200, { excludedRatings: validRatings });
   }
 
   // POST /team - Create team (first time setup)
@@ -718,6 +758,7 @@ export async function handler(event: Event): Promise<Result> {
   if (method === 'POST' && path === '/evaluations/analysis') {
     const body = parseBody(event);
     const excludedCoachIds: string[] = body.excludedCoachIds || [];
+    const excludedRatings: Array<{coachId: string; playerId: string}> = body.excludedRatings || [];
 
     const evalItems = await queryItems(`TEAM#${teamId}`, 'EVAL#');
     const playerItems = await queryItems(`TEAM#${teamId}`, 'PLAYER#');
@@ -747,11 +788,10 @@ export async function handler(event: Event): Promise<Result> {
       name: c.name,
     }));
 
-    const analysis = computeAnalysis(evaluationsData, playersData, coachesData, excludedCoachIds, isLead);
+    const analysis = computeAnalysis(evaluationsData, playersData, coachesData, excludedCoachIds, excludedRatings, isLead);
 
     // Non-leads don't get coach reliability data or raw scores
     if (!isLead) {
-      analysis.coachReliability = [];
       analysis.playerImpactWarnings = [];
       // Strip raw scores — coaches should only see normalized values
       analysis.playerRankings = analysis.playerRankings.map((p) => ({

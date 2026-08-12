@@ -2,8 +2,14 @@ import type { RatingCategory } from './types';
 
 // === Analysis Request/Response Types ===
 
+export interface ExcludedRating {
+  coachId: string;
+  playerId: string;
+}
+
 export interface AnalysisRequest {
   excludedCoachIds?: string[];
+  excludedRatings?: ExcludedRating[];
 }
 
 // === Normalized Player Data ===
@@ -49,6 +55,8 @@ export interface CoachReliabilityMetrics {
   meanDeviationFromMean: number;
   /** Spearman rank correlation between coach's rankings and consensus rankings */
   rankCorrelation: number;
+  /** Whether this coach is excluded from the analysis */
+  isExcluded: boolean;
   /** Per-player deviations for drill-down */
   playerDeviations: PlayerDeviation[];
 }
@@ -61,6 +69,7 @@ export interface PlayerDeviation {
   medianNormalized: number;
   meanNormalized: number;
   deviation: number; // coach - median
+  isExcluded?: boolean; // true if this individual rating was excluded
 }
 
 // === Player Impact Warning (for coach exclusion) ===
@@ -89,6 +98,7 @@ export interface AnalysisMetadata {
   totalCoaches: number;
   totalEvaluations: number;
   excludedCoachIds: string[];
+  excludedRatings: ExcludedRating[];
   /** Coaches with stddev=0 who couldn't be Z-normalized */
   undifferentiatingCoaches: string[];
 }

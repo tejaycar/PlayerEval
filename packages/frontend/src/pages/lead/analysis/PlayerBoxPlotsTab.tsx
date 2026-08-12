@@ -140,8 +140,9 @@ export default function PlayerBoxPlotsTab({ boxPlots }: Props) {
             </div>
 
             {/* Stats */}
-            <div className="w-32 text-xs text-gray-500 flex-shrink-0">
+            <div className="w-40 text-xs text-gray-500 flex-shrink-0">
               Med: {bp.median} · IQR: {bp.iqr}
+              <span className="text-gray-400 text-xs ml-1 cursor-help" title="Interquartile range -- how spread out the middle 50% of scores are. Higher = more disagreement between coaches.">&#9432;</span>
             </div>
           </div>
         ))}

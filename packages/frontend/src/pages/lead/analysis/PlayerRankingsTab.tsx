@@ -5,7 +5,9 @@ interface Props {
   rankings: NormalizedPlayerScore[];
 }
 
-type SortField = 'normalizedTotal' | 'rawTotal' | 'attitude' | 'effort' | 'footballIQ' | 'generalSkill' | 'positionSkill';
+type SortField = 'normalizedTotal' | 'rawTotal' | 'attitude' | 'effort' | 'footballIQ' | 'generalSkill' | 'positionSkill' | 'playerName' | 'playerNumber' | 'primaryPosition' | 'secondaryPosition' | 'evaluationCount';
+
+const STRING_FIELDS: Set<SortField> = new Set(['playerName', 'playerNumber', 'primaryPosition', 'secondaryPosition']);
 
 export default function PlayerRankingsTab({ rankings }: Props) {
   const [sortBy, setSortBy] = useState<SortField>('normalizedTotal');
@@ -16,20 +18,31 @@ export default function PlayerRankingsTab({ rankings }: Props) {
       setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
     } else {
       setSortBy(field);
-      setSortDir('desc');
+      // Default direction: asc for strings, desc for numbers
+      setSortDir(STRING_FIELDS.has(field) ? 'asc' : 'desc');
     }
   };
 
   const sorted = [...rankings].sort((a, b) => {
-    let aVal: number, bVal: number;
-    if (sortBy === 'normalizedTotal') {
-      aVal = a.normalizedTotal; bVal = b.normalizedTotal;
+    let cmp: number;
+    if (sortBy === 'playerName') {
+      cmp = a.playerName.localeCompare(b.playerName);
+    } else if (sortBy === 'playerNumber') {
+      cmp = a.playerNumber.localeCompare(b.playerNumber, undefined, { numeric: true });
+    } else if (sortBy === 'primaryPosition') {
+      cmp = (a.primaryPosition || '').localeCompare(b.primaryPosition || '');
+    } else if (sortBy === 'secondaryPosition') {
+      cmp = (a.secondaryPosition || '').localeCompare(b.secondaryPosition || '');
+    } else if (sortBy === 'evaluationCount') {
+      cmp = a.evaluationCount - b.evaluationCount;
+    } else if (sortBy === 'normalizedTotal') {
+      cmp = a.normalizedTotal - b.normalizedTotal;
     } else if (sortBy === 'rawTotal') {
-      aVal = a.rawTotal; bVal = b.rawTotal;
+      cmp = a.rawTotal - b.rawTotal;
     } else {
-      aVal = a.categories[sortBy]; bVal = b.categories[sortBy];
+      cmp = a.categories[sortBy] - b.categories[sortBy];
     }
-    return sortDir === 'asc' ? aVal - bVal : bVal - aVal;
+    return sortDir === 'asc' ? cmp : -cmp;
   });
 
 
@@ -37,9 +50,9 @@ export default function PlayerRankingsTab({ rankings }: Props) {
     return <p className="text-gray-500">No evaluation data available.</p>;
   }
 
-  const SortHeader = ({ field, label }: { field: SortField; label: string }) => (
+  const SortHeader = ({ field, label, align }: { field: SortField; label: string; align?: string }) => (
     <th
-      className="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase cursor-pointer hover:text-gray-700"
+      className={`px-3 py-2 ${align === 'left' ? 'text-left' : 'text-center'} text-xs font-medium text-gray-500 uppercase cursor-pointer hover:text-gray-700`}
       onClick={() => handleSort(field)}
     >
       {label} {sortBy === field && (sortDir === 'asc' ? '↑' : '↓')}
@@ -52,11 +65,11 @@ export default function PlayerRankingsTab({ rankings }: Props) {
         <thead className="bg-gray-50">
           <tr>
             <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Rank</th>
-            <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">#</th>
-            <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Player</th>
-            <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Primary</th>
-            <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Secondary</th>
-            <th className="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">Evals</th>
+            <SortHeader field="playerNumber" label="#" align="left" />
+            <SortHeader field="playerName" label="Player" align="left" />
+            <SortHeader field="primaryPosition" label="Primary" align="left" />
+            <SortHeader field="secondaryPosition" label="Secondary" align="left" />
+            <SortHeader field="evaluationCount" label="Evals" />
             <SortHeader field="attitude" label="Attitude" />
             <SortHeader field="effort" label="Effort" />
             <SortHeader field="footballIQ" label="Football IQ" />

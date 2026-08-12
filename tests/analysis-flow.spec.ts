@@ -69,6 +69,7 @@ function makeCoachReliability(idx: number) {
     madFromMedian: mad,
     meanDeviationFromMean: bias,
     rankCorrelation: corr,
+    isExcluded: false,
     playerDeviations: PLAYERS.slice(0, 5).map((p, pi) => ({
       playerId: p.id, playerName: p.name, playerNumber: p.number,
       coachNormalized: +(48 + pi * 0.5 + idx * 0.2).toFixed(2),
@@ -89,6 +90,7 @@ const baseAnalysisResponse = {
   metadata: {
     totalPlayers: 45, totalCoaches: 15, totalEvaluations: 270,
     excludedCoachIds: [] as string[],
+    excludedRatings: [] as any[],
     undifferentiatingCoaches: ['coach-15'],
   },
 };
@@ -108,6 +110,7 @@ const excludedAnalysisResponse = {
   metadata: {
     totalPlayers: 45, totalCoaches: 14, totalEvaluations: 252,
     excludedCoachIds: ['coach-1'],
+    excludedRatings: [] as any[],
     undifferentiatingCoaches: ['coach-15'],
   },
 };
@@ -137,6 +140,35 @@ async function setupRoutes(page: Page) {
     const response = excludedIds.length > 0 ? excludedAnalysisResponse : baseAnalysisResponse;
     await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(response) });
   });
+  await page.route('**/api/team/excluded-coaches', async (route: Route) => {
+    if (route.request().method() === 'GET') {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ excludedCoachIds: [] }) });
+    } else {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true }) });
+    }
+  });
+  await page.route('**/api/team/excluded-ratings', async (route: Route) => {
+    if (route.request().method() === 'GET') {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ excludedRatings: [] }) });
+    } else {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true }) });
+    }
+  });
+}
+
+/** After page load, uncheck the anonymize toggle so coach real names are visible */
+async function disableAnonymize(page: Page) {
+  // Wait for coaches to be loaded (the exclusion panel heading appears)
+  await expect(page.getByText('Exclude Coaches from Analysis')).toBeVisible();
+  // The anonymize checkbox is checked by default - uncheck it
+  const label = page.locator('label').filter({ hasText: 'Anonymize coaches' });
+  await expect(label).toBeVisible();
+  const checkbox = label.locator('input[type="checkbox"]');
+  if (await checkbox.isChecked()) {
+    await checkbox.uncheck();
+  }
+  // Wait for coach names to update after un-anonymizing
+  await expect(page.locator('label').filter({ hasText: 'Coach A' })).toBeVisible({ timeout: 5000 });
 }
 
 test.describe('Analysis Page - E2E', () => {
@@ -159,17 +191,20 @@ test.describe('Analysis Page - E2E', () => {
 
   test('shows coach exclusion panel with all 15 coaches', async ({ page }) => {
     await page.goto('/lead/analysis');
+    await disableAnonymize(page);
     await expect(page.getByText('Exclude Coaches from Analysis')).toBeVisible();
     for (const coach of COACHES) {
       await expect(page.locator('label').filter({ hasText: coach.name })).toBeVisible();
     }
   });
 
-  test('shows three tab buttons', async ({ page }) => {
+  test('shows five tab buttons', async ({ page }) => {
     await page.goto('/lead/analysis');
     await expect(page.getByRole('button', { name: 'Player Rankings' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Box Plots' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Coach Reliability' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Coach Analysis' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Distribution' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Exclusions' })).toBeVisible();
   });
 
   test('Player Rankings tab shows table with all 45 players', async ({ page }) => {
@@ -246,9 +281,10 @@ test.describe('Analysis Page - E2E', () => {
     await expect(page.getByText('Scale:')).toBeVisible();
   });
 
-  test('Coach Reliability tab shows table with all coaches', async ({ page }) => {
+  test('Coach Analysis tab shows table with all coaches', async ({ page }) => {
     await page.goto('/lead/analysis');
-    await page.getByRole('button', { name: 'Coach Reliability' }).click();
+    await disableAnonymize(page);
+    await page.getByRole('button', { name: 'Coach Analysis' }).click();
     await expect(page.getByText('how closely each coach')).toBeVisible();
     const table = page.locator('table');
     await expect(table).toBeVisible();
@@ -263,9 +299,9 @@ test.describe('Analysis Page - E2E', () => {
     }
   });
 
-  test('Coach Reliability tab - expand details with Show button', async ({ page }) => {
+  test('Coach Analysis tab - expand details with Show button', async ({ page }) => {
     await page.goto('/lead/analysis');
-    await page.getByRole('button', { name: 'Coach Reliability' }).click();
+    await page.getByRole('button', { name: 'Coach Analysis' }).click();
     const table = page.locator('table');
     await expect(table).toBeVisible();
     const showBtn = page.getByRole('button', { name: 'Show' }).first();
@@ -275,9 +311,9 @@ test.describe('Analysis Page - E2E', () => {
     await expect(page.getByRole('button', { name: 'Hide' }).first()).toBeVisible();
   });
 
-  test('Coach Reliability tab - collapse details with Hide button', async ({ page }) => {
+  test('Coach Analysis tab - collapse details with Hide button', async ({ page }) => {
     await page.goto('/lead/analysis');
-    await page.getByRole('button', { name: 'Coach Reliability' }).click();
+    await page.getByRole('button', { name: 'Coach Analysis' }).click();
     const showBtn = page.getByRole('button', { name: 'Show' }).first();
     await showBtn.click();
     await expect(page.getByRole('button', { name: 'Hide' }).first()).toBeVisible();
@@ -285,9 +321,9 @@ test.describe('Analysis Page - E2E', () => {
     await expect(page.getByRole('button', { name: 'Show' }).first()).toBeVisible();
   });
 
-  test('Coach Reliability tab - sorting by Rank Correlation', async ({ page }) => {
+  test('Coach Analysis tab - sorting by Rank Correlation', async ({ page }) => {
     await page.goto('/lead/analysis');
-    await page.getByRole('button', { name: 'Coach Reliability' }).click();
+    await page.getByRole('button', { name: 'Coach Analysis' }).click();
     const table = page.locator('table');
     await expect(table).toBeVisible();
     await page.locator('th').filter({ hasText: 'Rank Correlation' }).click();
@@ -296,6 +332,7 @@ test.describe('Analysis Page - E2E', () => {
 
   test('clicking a coach chip toggles exclusion styling', async ({ page }) => {
     await page.goto('/lead/analysis');
+    await disableAnonymize(page);
     await expect(page.getByText('Exclude Coaches from Analysis')).toBeVisible();
     const coachChip = page.locator('label').filter({ hasText: 'Coach A' });
     await expect(coachChip).toBeVisible();
@@ -307,6 +344,7 @@ test.describe('Analysis Page - E2E', () => {
 
   test('excluding a coach triggers data refresh with new response', async ({ page }) => {
     await page.goto('/lead/analysis');
+    await disableAnonymize(page);
     await expect(page.getByText('15 coaches')).toBeVisible();
     const coachChip = page.locator('label').filter({ hasText: 'Coach A' });
     await coachChip.click();
@@ -316,6 +354,7 @@ test.describe('Analysis Page - E2E', () => {
 
   test('excluding a coach and re-including toggles back', async ({ page }) => {
     await page.goto('/lead/analysis');
+    await disableAnonymize(page);
     await expect(page.getByText('15 coaches')).toBeVisible();
     const coachChip = page.locator('label').filter({ hasText: 'Coach A' });
     await coachChip.click();
@@ -325,8 +364,9 @@ test.describe('Analysis Page - E2E', () => {
     await expect(page.getByText('coach(es) excluded')).not.toBeVisible();
   });
 
-  test('impact warnings display when coaches are excluded', async ({ page }) => {
+  test('impact warnings display when coaches are excluded (drops below 5 total)', async ({ page }) => {
     await page.goto('/lead/analysis');
+    await disableAnonymize(page);
     await expect(page.locator('.bg-amber-50')).not.toBeVisible();
     const coachChip = page.locator('label').filter({ hasText: 'Coach A' });
     await coachChip.click();
@@ -338,6 +378,7 @@ test.describe('Analysis Page - E2E', () => {
 
   test('impact warnings disappear when exclusion is removed', async ({ page }) => {
     await page.goto('/lead/analysis');
+    await disableAnonymize(page);
     const coachChip = page.locator('label').filter({ hasText: 'Coach A' });
     await coachChip.click();
     await expect(page.locator('.bg-amber-50')).toBeVisible({ timeout: 5000 });
@@ -384,11 +425,19 @@ test.describe('Analysis Page - E2E', () => {
     await expect(page.getByText('Player 5').first()).toBeVisible();
   });
 
-  test('player filter is hidden on Coach Reliability tab', async ({ page }) => {
+  test('player filter is hidden on Coach Analysis tab', async ({ page }) => {
     await page.goto('/lead/analysis');
     const filterInput = page.getByPlaceholder('Filter players by name or number...');
     await expect(filterInput).toBeVisible();
-    await page.getByRole('button', { name: 'Coach Reliability' }).click();
+    await page.getByRole('button', { name: 'Coach Analysis' }).click();
+    await expect(filterInput).not.toBeVisible();
+  });
+
+  test('player filter is hidden on Exclusions tab', async ({ page }) => {
+    await page.goto('/lead/analysis');
+    const filterInput = page.getByPlaceholder('Filter players by name or number...');
+    await expect(filterInput).toBeVisible();
+    await page.getByRole('button', { name: 'Exclusions' }).click();
     await expect(filterInput).not.toBeVisible();
   });
 
@@ -396,7 +445,7 @@ test.describe('Analysis Page - E2E', () => {
     await page.goto('/lead/analysis');
     await page.getByRole('button', { name: 'Box Plots' }).click();
     await expect(page.getByText('Sort by Controversy (IQR)')).toBeVisible();
-    await page.getByRole('button', { name: 'Coach Reliability' }).click();
+    await page.getByRole('button', { name: 'Coach Analysis' }).click();
     await expect(page.getByText('how closely each coach')).toBeVisible();
     await page.getByRole('button', { name: 'Player Rankings' }).click();
     const table = page.locator('table');
@@ -433,6 +482,7 @@ test.describe('Analysis Page - E2E', () => {
 
   test('can exclude multiple coaches', async ({ page }) => {
     await page.goto('/lead/analysis');
+    await disableAnonymize(page);
     await expect(page.getByText('Exclude Coaches from Analysis')).toBeVisible();
     await page.locator('label').filter({ hasText: 'Coach A' }).click();
     await expect(page.getByText('1 coach(es) excluded')).toBeVisible();

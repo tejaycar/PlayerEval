@@ -3,11 +3,17 @@ import type { CoachReliabilityMetrics } from '@player-eval/shared';
 
 interface Props {
   reliability: CoachReliabilityMetrics[];
+  excludedCoachIds?: string[];
+  excludedRatings?: Array<{ coachId: string; playerId: string }>;
 }
 
 type SortField = 'madFromMedian' | 'meanDeviationFromMean' | 'rankCorrelation' | 'playersRated';
 
-export default function CoachReliabilityTab({ reliability }: Props) {
+const InfoTooltip = ({ text }: { text: string }) => (
+  <span className="text-gray-400 text-xs ml-1 cursor-help" title={text}>&#9432;</span>
+);
+
+export default function CoachAnalysisTab({ reliability, excludedCoachIds, excludedRatings }: Props) {
   const [sortBy, setSortBy] = useState<SortField>('madFromMedian');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
   const [expandedCoach, setExpandedCoach] = useState<string | null>(null);
@@ -50,15 +56,25 @@ export default function CoachReliabilityTab({ reliability }: Props) {
     return { text: 'Neutral', color: 'text-gray-500' };
   };
 
-  const SortHeader = ({ field, label }: { field: SortField; label: string }) => (
+  const SortHeader = ({ field, label, tooltip }: { field: SortField; label: string; tooltip?: string }) => (
     <th
       className="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase cursor-pointer hover:text-gray-700"
       onClick={() => handleSort(field)}
     >
-      {label} {sortBy === field && (sortDir === 'asc' ? '↑' : '↓')}
+      {label}{tooltip && <InfoTooltip text={tooltip} />} {sortBy === field && (sortDir === 'asc' ? '↑' : '↓')}
     </th>
   );
 
+  const isCoachExcluded = (coachId: string) => {
+    if (excludedCoachIds && excludedCoachIds.includes(coachId)) return true;
+    const coach = reliability.find(c => c.coachId === coachId);
+    return coach?.isExcluded || false;
+  };
+
+  const isRatingExcluded = (coachId: string, playerId: string) => {
+    if (!excludedRatings) return false;
+    return excludedRatings.some((r) => r.coachId === coachId && r.playerId === playerId);
+  };
 
   return (
     <div>
@@ -73,19 +89,28 @@ export default function CoachReliabilityTab({ reliability }: Props) {
             <tr>
               <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Coach</th>
               <SortHeader field="playersRated" label="Players Rated" />
-              <SortHeader field="madFromMedian" label="MAD from Median" />
-              <SortHeader field="meanDeviationFromMean" label="Bias (Mean Dev)" />
-              <SortHeader field="rankCorrelation" label="Rank Correlation" />
+              <SortHeader field="madFromMedian" label="MAD from Median" tooltip="Mean absolute deviation -- how far this coach's scores typically land from the group consensus." />
+              <SortHeader field="meanDeviationFromMean" label="Bias (Mean Dev)" tooltip="Average direction of deviation -- positive means this coach tends to rate higher than consensus, negative means lower." />
+              <SortHeader field="rankCorrelation" label="Rank Correlation" tooltip="How similarly this coach ranks players compared to the group. 1.0 = perfect agreement on ordering, 0 = no relationship." />
               <th className="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">Details</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-200">
             {sorted.map((coach) => {
               const bias = getBiasLabel(coach.meanDeviationFromMean);
+              const excluded = isCoachExcluded(coach.coachId);
               return (
                 <React.Fragment key={coach.coachId}>
-                  <tr className="hover:bg-gray-50">
-                    <td className="px-3 py-2 font-medium">{coach.coachName}</td>
+                  <tr className={excluded ? 'bg-red-50' : 'hover:bg-gray-50'}>
+                    <td className="px-3 py-2 font-medium">
+                      {coach.coachName}
+                      {excluded && (
+                        <>
+                          {' '}<span role="img" aria-label="excluded">&#x1F6D1;</span>
+                          <sup><span className="text-gray-400 text-xs cursor-help" title="This evaluator's ratings were excluded from the calculation of average scores.">&#9432;</span></sup>
+                        </>
+                      )}
+                    </td>
                     <td className="px-3 py-2 text-center">{coach.playersRated}</td>
                     <td className="px-3 py-2 text-center">
                       <span className={`px-2 py-0.5 rounded ${getMADColor(coach.madFromMedian)}`}>
@@ -130,20 +155,29 @@ export default function CoachReliabilityTab({ reliability }: Props) {
                             <tbody>
                               {coach.playerDeviations
                                 .sort((a, b) => Math.abs(b.deviation) - Math.abs(a.deviation))
-                                .map((pd) => (
-                                  <tr key={pd.playerId} className="border-t border-gray-200">
-                                    <td className="px-2 py-1">#{pd.playerNumber} {pd.playerName}</td>
-                                    <td className="px-2 py-1 text-center">{pd.coachNormalized}</td>
-                                    <td className="px-2 py-1 text-center">{pd.medianNormalized}</td>
-                                    <td className="px-2 py-1 text-center">{pd.meanNormalized}</td>
+                                .map((pd) => {
+                                  const ratingExcluded = pd.isExcluded || isRatingExcluded(coach.coachId, pd.playerId);
+                                  return (
+                                  <tr key={pd.playerId} className={`border-t border-gray-200 ${ratingExcluded ? 'bg-red-50' : ''}`}>
+                                    <td className={`px-2 py-1 ${ratingExcluded ? 'text-red-400' : ''}`}>
+                                      #{pd.playerNumber} {pd.playerName}
+                                      {ratingExcluded && (
+                                        <span className="ml-1 text-red-400" title="This rating was excluded from the calculation of average scores.">&#x1F6D1;<sup>&#9432;</sup></span>
+                                      )}
+                                    </td>
+                                    <td className={`px-2 py-1 text-center ${ratingExcluded ? 'text-red-400' : ''}`}>{pd.coachNormalized}</td>
+                                    <td className={`px-2 py-1 text-center ${ratingExcluded ? 'text-red-400' : ''}`}>{pd.medianNormalized}</td>
+                                    <td className={`px-2 py-1 text-center ${ratingExcluded ? 'text-red-400' : ''}`}>{pd.meanNormalized}</td>
                                     <td className={`px-2 py-1 text-center font-medium ${
+                                      ratingExcluded ? 'text-red-400' :
                                       Math.abs(pd.deviation) > 3 ? 'text-red-600' :
                                       Math.abs(pd.deviation) > 1.5 ? 'text-yellow-600' : 'text-gray-600'
                                     }`}>
                                       {pd.deviation > 0 ? '+' : ''}{pd.deviation}
                                     </td>
                                   </tr>
-                                ))}
+                                  );
+                                })}
                             </tbody>
                           </table>
                         </div>
