@@ -65,15 +65,19 @@ export default function CoachAnalysisTab({ reliability, excludedCoachIds, exclud
     </th>
   );
 
-  const isCoachExcluded = (coachId: string) => {
-    if (excludedCoachIds && excludedCoachIds.includes(coachId)) return true;
-    const coach = reliability.find(c => c.coachId === coachId);
-    return coach?.isExcluded || false;
+  // Exclusion indicators disabled to avoid leaking info about which coaches/ratings are excluded
+  // Keep the code structure intact for future re-enablement
+  const isCoachExcluded = (_coachId: string) => {
+    return false;
+    // if (excludedCoachIds && excludedCoachIds.includes(coachId)) return true;
+    // const coach = reliability.find(c => c.coachId === coachId);
+    // return coach?.isExcluded || false;
   };
 
-  const isRatingExcluded = (coachId: string, playerId: string) => {
-    if (!excludedRatings) return false;
-    return excludedRatings.some((r) => r.coachId === coachId && r.playerId === playerId);
+  const isRatingExcluded = (_coachId: string, _playerId: string) => {
+    return false;
+    // if (!excludedRatings) return false;
+    // return excludedRatings.some((r) => r.coachId === coachId && r.playerId === playerId);
   };
 
   return (
