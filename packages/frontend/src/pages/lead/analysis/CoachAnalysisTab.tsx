@@ -4,6 +4,7 @@ import type { CoachReliabilityMetrics } from '@player-eval/shared';
 interface Props {
   reliability: CoachReliabilityMetrics[];
   excludedCoachIds?: string[];
+  excludedRatings?: Array<{ coachId: string; playerId: string }>;
 }
 
 type SortField = 'madFromMedian' | 'meanDeviationFromMean' | 'rankCorrelation' | 'playersRated';
@@ -12,7 +13,7 @@ const InfoTooltip = ({ text }: { text: string }) => (
   <span className="text-gray-400 text-xs ml-1 cursor-help" title={text}>&#9432;</span>
 );
 
-export default function CoachAnalysisTab({ reliability, excludedCoachIds }: Props) {
+export default function CoachAnalysisTab({ reliability, excludedCoachIds, excludedRatings }: Props) {
   const [sortBy, setSortBy] = useState<SortField>('madFromMedian');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
   const [expandedCoach, setExpandedCoach] = useState<string | null>(null);
@@ -68,6 +69,11 @@ export default function CoachAnalysisTab({ reliability, excludedCoachIds }: Prop
     if (excludedCoachIds && excludedCoachIds.includes(coachId)) return true;
     const coach = reliability.find(c => c.coachId === coachId);
     return coach?.isExcluded || false;
+  };
+
+  const isRatingExcluded = (coachId: string, playerId: string) => {
+    if (!excludedRatings) return false;
+    return excludedRatings.some((r) => r.coachId === coachId && r.playerId === playerId);
   };
 
   return (
@@ -149,20 +155,29 @@ export default function CoachAnalysisTab({ reliability, excludedCoachIds }: Prop
                             <tbody>
                               {coach.playerDeviations
                                 .sort((a, b) => Math.abs(b.deviation) - Math.abs(a.deviation))
-                                .map((pd) => (
-                                  <tr key={pd.playerId} className="border-t border-gray-200">
-                                    <td className="px-2 py-1">#{pd.playerNumber} {pd.playerName}</td>
-                                    <td className="px-2 py-1 text-center">{pd.coachNormalized}</td>
-                                    <td className="px-2 py-1 text-center">{pd.medianNormalized}</td>
-                                    <td className="px-2 py-1 text-center">{pd.meanNormalized}</td>
+                                .map((pd) => {
+                                  const ratingExcluded = isRatingExcluded(coach.coachId, pd.playerId);
+                                  return (
+                                  <tr key={pd.playerId} className={`border-t border-gray-200 ${ratingExcluded ? 'bg-red-50' : ''}`}>
+                                    <td className={`px-2 py-1 ${ratingExcluded ? 'text-red-400' : ''}`}>
+                                      #{pd.playerNumber} {pd.playerName}
+                                      {ratingExcluded && (
+                                        <span className="ml-1 text-red-400" title="This rating was excluded from the calculation of average scores.">&#x1F6D1;<sup>&#9432;</sup></span>
+                                      )}
+                                    </td>
+                                    <td className={`px-2 py-1 text-center ${ratingExcluded ? 'text-red-400' : ''}`}>{pd.coachNormalized}</td>
+                                    <td className={`px-2 py-1 text-center ${ratingExcluded ? 'text-red-400' : ''}`}>{pd.medianNormalized}</td>
+                                    <td className={`px-2 py-1 text-center ${ratingExcluded ? 'text-red-400' : ''}`}>{pd.meanNormalized}</td>
                                     <td className={`px-2 py-1 text-center font-medium ${
+                                      ratingExcluded ? 'text-red-400' :
                                       Math.abs(pd.deviation) > 3 ? 'text-red-600' :
                                       Math.abs(pd.deviation) > 1.5 ? 'text-yellow-600' : 'text-gray-600'
                                     }`}>
                                       {pd.deviation > 0 ? '+' : ''}{pd.deviation}
                                     </td>
                                   </tr>
-                                ))}
+                                  );
+                                })}
                             </tbody>
                           </table>
                         </div>

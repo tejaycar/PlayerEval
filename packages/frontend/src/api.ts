@@ -83,6 +83,8 @@ export const team = {
   saveExcludedCoaches: (excludedCoachIds: string[]) => request('PUT', '/team/excluded-coaches', { excludedCoachIds }),
   getExcludedRatings: () => request('GET', '/team/excluded-ratings'),
   saveExcludedRatings: (excludedRatings: Array<{coachId: string, playerId: string}>) => request('PUT', '/team/excluded-ratings', { excludedRatings }),
+  getExclusionMode: () => request('GET', '/team/exclusion-mode'),
+  saveExclusionMode: (exclusionMode: string) => request('PUT', '/team/exclusion-mode', { exclusionMode }),
 };
 
 // Players

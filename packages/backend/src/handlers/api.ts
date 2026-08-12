@@ -212,6 +212,21 @@ export async function handler(event: Event): Promise<Result> {
     return json(200, { excludedCoachIds: ids });
   }
 
+  // GET /team/exclusion-mode - Get persisted exclusion mode
+  if (method === 'GET' && path === '/team/exclusion-mode') {
+    const teamMeta = await getItem(`TEAM#${teamId}`, 'META');
+    return json(200, { exclusionMode: teamMeta?.exclusionMode || 'exclude_flagged' });
+  }
+
+  // PUT /team/exclusion-mode - Save exclusion mode (lead only)
+  if (method === 'PUT' && path === '/team/exclusion-mode') {
+    if (!isLead) return json(403, { error: 'Only leads can manage exclusion mode' });
+    const { exclusionMode: mode } = parseBody(event);
+    if (mode !== 'include_all' && mode !== 'exclude_flagged') return json(400, { error: 'exclusionMode must be include_all or exclude_flagged' });
+    await updateItem(`TEAM#${teamId}`, 'META', { exclusionMode: mode });
+    return json(200, { exclusionMode: mode });
+  }
+
   // GET /team/excluded-ratings - Get persisted excluded ratings
   // NOTE: Intentionally accessible to all authenticated team members (not just leads).
   // The coach view always applies the lead's saved exclusions to produce consistent

@@ -12,6 +12,7 @@ export default function CoachAnalysis() {
   const [coachReliability, setCoachReliability] = useState<CoachReliabilityMetrics[]>([]);
   const [coachList, setCoachList] = useState<{ id: string; name: string }[]>([]);
   const [excludedCoachIds, setExcludedCoachIds] = useState<string[]>([]);
+  const [excludedRatings, setExcludedRatings] = useState<Array<{coachId: string; playerId: string}>>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [playerFilter, setPlayerFilter] = useState('');
@@ -36,11 +37,12 @@ export default function CoachAnalysis() {
         team.getExcludedRatings(),
       ]);
       const excludedIds = coachExclusionData.excludedCoachIds || [];
-      const excludedRatings = ratingsData.excludedRatings || [];
+      const excludedRatingsData = ratingsData.excludedRatings || [];
       setExcludedCoachIds(excludedIds);
+      setExcludedRatings(excludedRatingsData);
 
       // Get analysis with those exclusions
-      const data = await evaluations.analysis(excludedIds, excludedRatings);
+      const data = await evaluations.analysis(excludedIds, excludedRatingsData);
       setBoxPlots(data.boxPlots);
       setCoachReliability(data.coachReliability);
     } catch (err: any) {
@@ -139,7 +141,7 @@ export default function CoachAnalysis() {
       )}
 
       {activeTab === 'coachAnalysis' && (
-        <CoachAnalysisTab reliability={anonymizedReliability} excludedCoachIds={excludedCoachIds} />
+        <CoachAnalysisTab reliability={anonymizedReliability} excludedCoachIds={excludedCoachIds} excludedRatings={excludedRatings} />
       )}
     </div>
   );
