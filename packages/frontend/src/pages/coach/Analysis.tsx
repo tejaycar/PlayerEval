@@ -11,17 +11,20 @@ export default function CoachAnalysis() {
   const [boxPlots, setBoxPlots] = useState<BoxPlotStats[]>([]);
   const [coachReliability, setCoachReliability] = useState<CoachReliabilityMetrics[]>([]);
   const [coachList, setCoachList] = useState<{ id: string; name: string }[]>([]);
+  const [excludedCoachIds, setExcludedCoachIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [playerFilter, setPlayerFilter] = useState('');
 
   const currentUser = getStoredUser();
 
+  // Load on mount and reload on every tab change (picks up lead's latest exclusions)
   useEffect(() => {
     loadData();
-  }, []);
+  }, [activeTab]);
 
   const loadData = async () => {
+    setLoading(true);
     try {
       // Load coaches list for anonymization
       const coachData = await coachesApi.list();
@@ -34,6 +37,7 @@ export default function CoachAnalysis() {
       ]);
       const excludedIds = coachExclusionData.excludedCoachIds || [];
       const excludedRatings = ratingsData.excludedRatings || [];
+      setExcludedCoachIds(excludedIds);
 
       // Get analysis with those exclusions
       const data = await evaluations.analysis(excludedIds, excludedRatings);
@@ -76,7 +80,9 @@ export default function CoachAnalysis() {
     { id: 'coachAnalysis', label: 'Coach Analysis' },
   ];
 
-  if (loading) return <div className="text-center py-8">Loading analysis...</div>;
+  if (loading && !boxPlots.length && !coachReliability.length) {
+    return <div className="text-center py-8">Loading analysis...</div>;
+  }
 
   return (
     <div>
@@ -133,7 +139,7 @@ export default function CoachAnalysis() {
       )}
 
       {activeTab === 'coachAnalysis' && (
-        <CoachAnalysisTab reliability={anonymizedReliability} />
+        <CoachAnalysisTab reliability={anonymizedReliability} excludedCoachIds={excludedCoachIds} />
       )}
     </div>
   );
