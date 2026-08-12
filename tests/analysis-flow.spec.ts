@@ -158,15 +158,17 @@ async function setupRoutes(page: Page) {
 
 /** After page load, uncheck the anonymize toggle so coach real names are visible */
 async function disableAnonymize(page: Page) {
-  const anonymizeCheckbox = page.locator('input[type="checkbox"]').first();
+  // Wait for coaches to be loaded (the exclusion panel heading appears)
+  await expect(page.getByText('Exclude Coaches from Analysis')).toBeVisible();
   // The anonymize checkbox is checked by default - uncheck it
   const label = page.locator('label').filter({ hasText: 'Anonymize coaches' });
-  if (await label.isVisible()) {
-    const checkbox = label.locator('input[type="checkbox"]');
-    if (await checkbox.isChecked()) {
-      await checkbox.uncheck();
-    }
+  await expect(label).toBeVisible();
+  const checkbox = label.locator('input[type="checkbox"]');
+  if (await checkbox.isChecked()) {
+    await checkbox.uncheck();
   }
+  // Wait for coach names to update after un-anonymizing
+  await expect(page.locator('label').filter({ hasText: 'Coach A' })).toBeVisible({ timeout: 5000 });
 }
 
 test.describe('Analysis Page - E2E', () => {

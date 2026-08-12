@@ -89,7 +89,7 @@ test.describe('Coach Flow', () => {
 
   test('can view results page', async ({ page }) => {
     await page.goto('/coach/results');
-    await expect(page.locator('h2')).toContainText('Results Summary');
+    await expect(page.locator('h2')).toContainText('Player Rankings');
   });
 
   test('cannot access lead pages', async ({ page }) => {
