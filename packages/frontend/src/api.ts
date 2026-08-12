@@ -27,7 +27,13 @@ export function getStoredUser(): { coachId: string; teamId: string; email: strin
 }
 
 export function setStoredUser(user: any) {
-  localStorage.setItem('playereval_user', JSON.stringify(user));
+  // Normalize: backend returns coach.id but we store as coachId
+  const normalized = { ...user };
+  if (normalized.id && !normalized.coachId) {
+    normalized.coachId = normalized.id;
+    delete normalized.id;
+  }
+  localStorage.setItem('playereval_user', JSON.stringify(normalized));
 }
 
 export function clearStoredUser() {
