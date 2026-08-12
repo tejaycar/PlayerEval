@@ -301,11 +301,10 @@ export function computeAnalysis(
   // Sort box plots by IQR descending (most controversial first)
   boxPlots.sort((a, b) => b.iqr - a.iqr);
 
-  // === Step 5: Coach reliability (lead only) ===
+  // === Step 5: Coach reliability ===
   let coachReliability: CoachReliabilityMetrics[] = [];
 
-  if (isLead) {
-    // For each player, compute median and mean of normalized totals
+  // For each player, compute median and mean of normalized totals
     const playerMedians = new Map<string, number>();
     const playerMeans = new Map<string, number>();
 
@@ -470,7 +469,6 @@ export function computeAnalysis(
 
     // Sort by MAD ascending (most reliable first)
     coachReliability.sort((a, b) => a.madFromMedian - b.madFromMedian);
-  }
 
   // === Step 6: Player impact warnings ===
   const playerImpactWarnings: PlayerImpactWarning[] = [];
