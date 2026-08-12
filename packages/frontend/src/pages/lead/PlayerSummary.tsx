@@ -83,12 +83,14 @@ export default function PlayerSummary() {
 
   const loadExclusions = async () => {
     try {
-      const [coachData, ratingsData] = await Promise.all([
+      const [coachData, ratingsData, modeData] = await Promise.all([
         team.getExcludedCoaches(),
         team.getExcludedRatings(),
+        team.getExclusionMode(),
       ]);
       setExcludedCoachIds(coachData.excludedCoachIds || []);
       setExcludedRatings(ratingsData.excludedRatings || []);
+      setExclusionMode(modeData.exclusionMode || 'exclude_flagged');
     } catch {
       // Ignore
     }
@@ -205,7 +207,7 @@ export default function PlayerSummary() {
         <div className="mt-6">
           <div className="inline-flex rounded-md shadow-sm" role="group">
             <button
-              onClick={() => setExclusionMode('include_all')}
+              onClick={() => { setExclusionMode('include_all'); team.saveExclusionMode('include_all').catch(() => {}); }}
               className={`px-3 py-1.5 text-xs font-medium border ${
                 exclusionMode === 'include_all'
                   ? 'bg-blue-600 text-white border-blue-600'
@@ -215,7 +217,7 @@ export default function PlayerSummary() {
               Include all
             </button>
             <button
-              onClick={() => setExclusionMode('exclude_flagged')}
+              onClick={() => { setExclusionMode('exclude_flagged'); team.saveExclusionMode('exclude_flagged').catch(() => {}); }}
               className={`px-3 py-1.5 text-xs font-medium border-t border-b border-r ${
                 exclusionMode === 'exclude_flagged'
                   ? 'bg-blue-600 text-white border-blue-600'
