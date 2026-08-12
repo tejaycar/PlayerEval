@@ -75,6 +75,8 @@ export const team = {
   create: (name: string) => request('POST', '/team', { name }),
   getExcludedCoaches: () => request('GET', '/team/excluded-coaches'),
   saveExcludedCoaches: (excludedCoachIds: string[]) => request('PUT', '/team/excluded-coaches', { excludedCoachIds }),
+  getExcludedRatings: () => request('GET', '/team/excluded-ratings'),
+  saveExcludedRatings: (excludedRatings: Array<{coachId: string, playerId: string}>) => request('PUT', '/team/excluded-ratings', { excludedRatings }),
 };
 
 // Players
@@ -112,7 +114,7 @@ export const evaluations = {
   summary: () => request('GET', '/evaluations/summary'),
   playerDetail: (playerId: string) => request('GET', `/evaluations/player/${playerId}`),
   submit: (data: any) => request('POST', '/evaluations', data),
-  analysis: (excludedCoachIds?: string[]) => request('POST', '/evaluations/analysis', { excludedCoachIds: excludedCoachIds || [] }),
+  analysis: (excludedCoachIds?: string[], excludedRatings?: Array<{coachId: string, playerId: string}>) => request('POST', '/evaluations/analysis', { excludedCoachIds: excludedCoachIds || [], excludedRatings: excludedRatings || [] }),
 };
 
 // My Players (coach view)

@@ -209,6 +209,21 @@ export async function handler(event: Event): Promise<Result> {
     return json(200, { excludedCoachIds: ids });
   }
 
+  // GET /team/excluded-ratings - Get persisted excluded ratings
+  if (method === 'GET' && path === '/team/excluded-ratings') {
+    const teamMeta = await getItem(`TEAM#${teamId}`, 'META');
+    return json(200, { excludedRatings: teamMeta?.excludedRatings || [] });
+  }
+
+  // PUT /team/excluded-ratings - Save excluded ratings (lead only)
+  if (method === 'PUT' && path === '/team/excluded-ratings') {
+    if (!isLead) return json(403, { error: 'Only leads can manage rating exclusions' });
+    const { excludedRatings } = parseBody(event);
+    if (!Array.isArray(excludedRatings)) return json(400, { error: 'excludedRatings must be an array' });
+    await updateItem(`TEAM#${teamId}`, 'META', { excludedRatings });
+    return json(200, { excludedRatings });
+  }
+
   // POST /team - Create team (first time setup)
   if (method === 'POST' && path === '/team') {
     const { name } = parseBody(event);
@@ -718,6 +733,7 @@ export async function handler(event: Event): Promise<Result> {
   if (method === 'POST' && path === '/evaluations/analysis') {
     const body = parseBody(event);
     const excludedCoachIds: string[] = body.excludedCoachIds || [];
+    const excludedRatings: Array<{coachId: string; playerId: string}> = body.excludedRatings || [];
 
     const evalItems = await queryItems(`TEAM#${teamId}`, 'EVAL#');
     const playerItems = await queryItems(`TEAM#${teamId}`, 'PLAYER#');
@@ -747,7 +763,7 @@ export async function handler(event: Event): Promise<Result> {
       name: c.name,
     }));
 
-    const analysis = computeAnalysis(evaluationsData, playersData, coachesData, excludedCoachIds, isLead);
+    const analysis = computeAnalysis(evaluationsData, playersData, coachesData, excludedCoachIds, excludedRatings, isLead);
 
     // Non-leads don't get coach reliability data or raw scores
     if (!isLead) {

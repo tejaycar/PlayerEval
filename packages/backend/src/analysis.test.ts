@@ -259,7 +259,7 @@ describe('computeAnalysis', () => {
 
   describe('Z-score normalization removes coach bias', () => {
     it('generous and harsh coaches produce convergent normalized scores for same-quality player', () => {
-      const result = computeAnalysis(evaluations, players, coaches, [], true);
+      const result = computeAnalysis(evaluations, players, coaches, [], [], true);
 
       // Find players rated by both generous (coach-1) and harsh (coach-3) coaches
       const generousPlayerIds = new Set(
@@ -282,7 +282,7 @@ describe('computeAnalysis', () => {
     });
 
     it('normalization brings all coaches to a common scale', () => {
-      const result = computeAnalysis(evaluations, players, coaches, [], true);
+      const result = computeAnalysis(evaluations, players, coaches, [], [], true);
 
       // The normalized totals should cluster around the league mean
       // rather than reflecting raw coach bias
@@ -298,7 +298,7 @@ describe('computeAnalysis', () => {
     });
 
     it('rankings are sorted by normalizedTotal descending', () => {
-      const result = computeAnalysis(evaluations, players, coaches, [], true);
+      const result = computeAnalysis(evaluations, players, coaches, [], [], true);
       for (let i = 1; i < result.playerRankings.length; i++) {
         expect(result.playerRankings[i - 1].normalizedTotal)
           .toBeGreaterThanOrEqual(result.playerRankings[i].normalizedTotal);
@@ -306,7 +306,7 @@ describe('computeAnalysis', () => {
     });
 
     it('all players have valid non-NaN normalized totals and categories', () => {
-      const result = computeAnalysis(evaluations, players, coaches, [], true);
+      const result = computeAnalysis(evaluations, players, coaches, [], [], true);
       for (const ranking of result.playerRankings) {
         expect(Number.isNaN(ranking.normalizedTotal)).toBe(false);
         expect(Number.isFinite(ranking.normalizedTotal)).toBe(true);
@@ -319,7 +319,7 @@ describe('computeAnalysis', () => {
 
   describe('Box plot computation', () => {
     it('computes Q1, median, Q3, IQR correctly for each player', () => {
-      const result = computeAnalysis(evaluations, players, coaches, [], true);
+      const result = computeAnalysis(evaluations, players, coaches, [], [], true);
 
       for (const bp of result.boxPlots) {
         expect(bp.q1).toBeLessThanOrEqual(bp.median);
@@ -333,7 +333,7 @@ describe('computeAnalysis', () => {
     });
 
     it('dataPoints length matches evaluation count for each player', () => {
-      const result = computeAnalysis(evaluations, players, coaches, [], true);
+      const result = computeAnalysis(evaluations, players, coaches, [], [], true);
       for (const bp of result.boxPlots) {
         const evalCount = evaluations.filter((e) => e.playerId === bp.playerId).length;
         expect(bp.dataPoints).toHaveLength(evalCount);
@@ -341,7 +341,7 @@ describe('computeAnalysis', () => {
     });
 
     it('outliers are outside 1.5*IQR fences', () => {
-      const result = computeAnalysis(evaluations, players, coaches, [], true);
+      const result = computeAnalysis(evaluations, players, coaches, [], [], true);
       for (const bp of result.boxPlots) {
         const lowerFence = bp.q1 - 1.5 * bp.iqr;
         const upperFence = bp.q3 + 1.5 * bp.iqr;
@@ -352,7 +352,7 @@ describe('computeAnalysis', () => {
     });
 
     it('controversial player-1 has high IQR', () => {
-      const result = computeAnalysis(evaluations, players, coaches, [], true);
+      const result = computeAnalysis(evaluations, players, coaches, [], [], true);
       const player1Bp = result.boxPlots.find((bp) => bp.playerId === 'player-1');
       expect(player1Bp).toBeDefined();
 
@@ -363,7 +363,7 @@ describe('computeAnalysis', () => {
     });
 
     it('box plots are sorted by IQR descending (most controversial first)', () => {
-      const result = computeAnalysis(evaluations, players, coaches, [], true);
+      const result = computeAnalysis(evaluations, players, coaches, [], [], true);
       for (let i = 1; i < result.boxPlots.length; i++) {
         expect(result.boxPlots[i - 1].iqr).toBeGreaterThanOrEqual(result.boxPlots[i].iqr);
       }
@@ -390,7 +390,7 @@ describe('computeAnalysis', () => {
         makeEval('c5', 'p1', [10, 10, 10, 10, 10]), // total 50
       ];
 
-      const result = computeAnalysis(smallEvals, smallPlayers, smallCoaches, [], false);
+      const result = computeAnalysis(smallEvals, smallPlayers, smallCoaches, [], [], false);
       const bp = result.boxPlots[0];
       expect(bp).toBeDefined();
       expect(bp.dataPoints).toHaveLength(5);
@@ -410,22 +410,23 @@ describe('computeAnalysis', () => {
 
   describe('Coach exclusion', () => {
     it('excluded coach evaluations are removed from results', () => {
-      const resultAll = computeAnalysis(evaluations, players, coaches, [], true);
-      const resultExcl = computeAnalysis(evaluations, players, coaches, ['coach-1'], true);
+      const resultAll = computeAnalysis(evaluations, players, coaches, [], [], true);
+      const resultExcl = computeAnalysis(evaluations, players, coaches, ['coach-1'], [], true);
 
       expect(resultExcl.metadata.totalCoaches).toBe(resultAll.metadata.totalCoaches - 1);
       expect(resultExcl.metadata.totalEvaluations).toBeLessThan(resultAll.metadata.totalEvaluations);
     });
 
-    it('excluded coach does not appear in coach reliability', () => {
-      const result = computeAnalysis(evaluations, players, coaches, ['coach-1'], true);
+    it('excluded coach appears in coach reliability with isExcluded flag', () => {
+      const result = computeAnalysis(evaluations, players, coaches, ['coach-1'], [], true);
       const found = result.coachReliability.find((c) => c.coachId === 'coach-1');
-      expect(found).toBeUndefined();
+      expect(found).toBeDefined();
+      expect(found!.isExcluded).toBe(true);
     });
 
     it('excluding a coach changes normalized scores for affected players', () => {
-      const resultAll = computeAnalysis(evaluations, players, coaches, [], true);
-      const resultExcl = computeAnalysis(evaluations, players, coaches, ['coach-1'], true);
+      const resultAll = computeAnalysis(evaluations, players, coaches, [], [], true);
+      const resultExcl = computeAnalysis(evaluations, players, coaches, ['coach-1'], [], true);
 
       // Find a player rated by coach-1
       const affectedPlayerId = evaluations.find((e) => e.coachId === 'coach-1')!.playerId;
@@ -439,13 +440,13 @@ describe('computeAnalysis', () => {
     });
 
     it('excludedCoachIds in metadata matches input', () => {
-      const result = computeAnalysis(evaluations, players, coaches, ['coach-1', 'coach-2'], true);
+      const result = computeAnalysis(evaluations, players, coaches, ['coach-1', 'coach-2'], [], true);
       expect(result.metadata.excludedCoachIds).toEqual(['coach-1', 'coach-2']);
     });
 
     it('excluding multiple coaches reduces counts appropriately', () => {
-      const resultNone = computeAnalysis(evaluations, players, coaches, [], true);
-      const resultTwo = computeAnalysis(evaluations, players, coaches, ['coach-1', 'coach-2'], true);
+      const resultNone = computeAnalysis(evaluations, players, coaches, [], [], true);
+      const resultTwo = computeAnalysis(evaluations, players, coaches, ['coach-1', 'coach-2'], [], true);
       expect(resultTwo.metadata.totalCoaches).toBe(resultNone.metadata.totalCoaches - 2);
     });
   });
@@ -458,7 +459,7 @@ describe('computeAnalysis', () => {
       const sharedPlayers = [...coach1Players].filter((id) => coach2Players.has(id));
 
       // Exclude both coaches
-      const result = computeAnalysis(evaluations, players, coaches, ['coach-1', 'coach-2'], true);
+      const result = computeAnalysis(evaluations, players, coaches, ['coach-1', 'coach-2'], [], true);
 
       if (sharedPlayers.length > 0) {
         // At least one player should have an impact warning (droppedBy >= 2)
@@ -470,31 +471,30 @@ describe('computeAnalysis', () => {
     });
 
     it('no impact warnings when no coaches are excluded', () => {
-      const result = computeAnalysis(evaluations, players, coaches, [], true);
+      const result = computeAnalysis(evaluations, players, coaches, [], [], true);
       expect(result.playerImpactWarnings).toHaveLength(0);
     });
 
     it('impact warnings are sorted by droppedBy descending', () => {
-      const result = computeAnalysis(evaluations, players, coaches, ['coach-1', 'coach-2'], true);
+      const result = computeAnalysis(evaluations, players, coaches, ['coach-1', 'coach-2'], [], true);
       for (let i = 1; i < result.playerImpactWarnings.length; i++) {
         expect(result.playerImpactWarnings[i - 1].droppedBy)
           .toBeGreaterThanOrEqual(result.playerImpactWarnings[i].droppedBy);
       }
     });
 
-    it('excluding a single coach that is only rater does not produce warnings (droppedBy must be >1)', () => {
-      // Excluding just one coach: for players only rated by that one extra coach,
-      // droppedBy = 1 which does NOT trigger a warning
-      const result = computeAnalysis(evaluations, players, coaches, ['coach-6'], true);
+    it('warnings trigger when reducedCount drops below 5', () => {
+      // New threshold: warnings appear when a player has fewer than 5 evaluations after exclusions
+      const result = computeAnalysis(evaluations, players, coaches, ['coach-6'], [], true);
       for (const warning of result.playerImpactWarnings) {
-        expect(warning.droppedBy).toBeGreaterThan(1);
+        expect(warning.reducedCount).toBeLessThan(5);
       }
     });
   });
 
   describe('Coach reliability metrics', () => {
     it('reports MAD from median for each coach', () => {
-      const result = computeAnalysis(evaluations, players, coaches, [], true);
+      const result = computeAnalysis(evaluations, players, coaches, [], [], true);
       for (const cr of result.coachReliability) {
         expect(cr.madFromMedian).toBeGreaterThanOrEqual(0);
         expect(Number.isFinite(cr.madFromMedian)).toBe(true);
@@ -502,14 +502,14 @@ describe('computeAnalysis', () => {
     });
 
     it('reports mean deviation direction (positive = rates high)', () => {
-      const result = computeAnalysis(evaluations, players, coaches, [], true);
+      const result = computeAnalysis(evaluations, players, coaches, [], [], true);
       for (const cr of result.coachReliability) {
         expect(Number.isFinite(cr.meanDeviationFromMean)).toBe(true);
       }
     });
 
     it('reports rank correlation for each coach', () => {
-      const result = computeAnalysis(evaluations, players, coaches, [], true);
+      const result = computeAnalysis(evaluations, players, coaches, [], [], true);
       for (const cr of result.coachReliability) {
         expect(cr.rankCorrelation).toBeGreaterThanOrEqual(-1);
         expect(cr.rankCorrelation).toBeLessThanOrEqual(1);
@@ -517,7 +517,7 @@ describe('computeAnalysis', () => {
     });
 
     it('coach reliability is sorted by MAD ascending (most reliable first)', () => {
-      const result = computeAnalysis(evaluations, players, coaches, [], true);
+      const result = computeAnalysis(evaluations, players, coaches, [], [], true);
       for (let i = 1; i < result.coachReliability.length; i++) {
         expect(result.coachReliability[i - 1].madFromMedian)
           .toBeLessThanOrEqual(result.coachReliability[i].madFromMedian);
@@ -525,12 +525,12 @@ describe('computeAnalysis', () => {
     });
 
     it('undifferentiating coach (coach-5) appears in metadata.undifferentiatingCoaches', () => {
-      const result = computeAnalysis(evaluations, players, coaches, [], true);
+      const result = computeAnalysis(evaluations, players, coaches, [], [], true);
       expect(result.metadata.undifferentiatingCoaches).toContain('coach-5');
     });
 
     it('normal coaches do not appear in undifferentiatingCoaches', () => {
-      const result = computeAnalysis(evaluations, players, coaches, [], true);
+      const result = computeAnalysis(evaluations, players, coaches, [], [], true);
       // Normal coaches (6-15) have varied scoring, should not be undifferentiating
       for (let i = 6; i <= 15; i++) {
         expect(result.metadata.undifferentiatingCoaches).not.toContain(`coach-${i}`);
@@ -538,15 +538,15 @@ describe('computeAnalysis', () => {
     });
 
     it('coach reliability is only populated when isLead=true', () => {
-      const resultLead = computeAnalysis(evaluations, players, coaches, [], true);
-      const resultNonLead = computeAnalysis(evaluations, players, coaches, [], false);
+      const resultLead = computeAnalysis(evaluations, players, coaches, [], [], true);
+      const resultNonLead = computeAnalysis(evaluations, players, coaches, [], [], false);
 
       expect(resultLead.coachReliability.length).toBeGreaterThan(0);
       expect(resultNonLead.coachReliability).toHaveLength(0);
     });
 
     it('each coach reliability entry has correct player deviation count', () => {
-      const result = computeAnalysis(evaluations, players, coaches, [], true);
+      const result = computeAnalysis(evaluations, players, coaches, [], [], true);
       for (const cr of result.coachReliability) {
         expect(cr.playerDeviations).toHaveLength(cr.playersRated);
       }
@@ -572,7 +572,7 @@ describe('computeAnalysis', () => {
       ];
 
       // Each coach rates 2 players -> n<3 -> rank correlation should be 0
-      const result = computeAnalysis(twoEvals, twoPlayers, twoCoaches, [], true);
+      const result = computeAnalysis(twoEvals, twoPlayers, twoCoaches, [], [], true);
       for (const cr of result.coachReliability) {
         expect(cr.rankCorrelation).toBe(0);
       }
@@ -603,7 +603,7 @@ describe('computeAnalysis', () => {
         makeEval('c3', 'p3', [4, 4, 4, 4, 4]),
       ];
 
-      const result = computeAnalysis(perfEvals, threePlayers, threeCoaches, [], true);
+      const result = computeAnalysis(perfEvals, threePlayers, threeCoaches, [], [], true);
       // All coaches agree perfectly, so rank correlation should be 1.0
       for (const cr of result.coachReliability) {
         expect(cr.rankCorrelation).toBe(1);
@@ -635,7 +635,7 @@ describe('computeAnalysis', () => {
         makeEval('c3', 'p3', [9, 9, 9, 9, 9]),
       ];
 
-      const result = computeAnalysis(antiEvals, threePlayers, threeCoaches, [], true);
+      const result = computeAnalysis(antiEvals, threePlayers, threeCoaches, [], [], true);
       // Find the contrarian coach
       const contrarian = result.coachReliability.find((c) => c.coachId === 'c3');
       expect(contrarian).toBeDefined();
@@ -667,7 +667,7 @@ describe('computeAnalysis', () => {
       ];
 
       // Should not throw and should produce valid correlation
-      const result = computeAnalysis(tiedEvals, fourPlayers, twoCoaches, [], true);
+      const result = computeAnalysis(tiedEvals, fourPlayers, twoCoaches, [], [], true);
       for (const cr of result.coachReliability) {
         expect(cr.rankCorrelation).toBeGreaterThanOrEqual(-1);
         expect(cr.rankCorrelation).toBeLessThanOrEqual(1);
@@ -678,7 +678,7 @@ describe('computeAnalysis', () => {
 
   describe('Edge cases', () => {
     it('empty evaluations returns empty results gracefully', () => {
-      const result = computeAnalysis([], players, coaches, [], true);
+      const result = computeAnalysis([], players, coaches, [], [], true);
       expect(result.playerRankings).toHaveLength(0);
       expect(result.boxPlots).toHaveLength(0);
       expect(result.coachReliability).toHaveLength(0);
@@ -701,7 +701,7 @@ describe('computeAnalysis', () => {
         makeEval('c1', 'p3', [3, 4, 3, 4, 3]),
       ];
 
-      const result = computeAnalysis(singleEvals, singlePlayers, singleCoach, [], true);
+      const result = computeAnalysis(singleEvals, singlePlayers, singleCoach, [], [], true);
       expect(result.playerRankings).toHaveLength(3);
 
       for (const ranking of result.playerRankings) {
@@ -720,7 +720,7 @@ describe('computeAnalysis', () => {
     });
 
     it('computeAnalysis always returns all players who have evaluations', () => {
-      const result = computeAnalysis(evaluations, players, coaches, [], true);
+      const result = computeAnalysis(evaluations, players, coaches, [], [], true);
       // Every player in evaluations should appear in results
       const evaluatedPlayerIds = new Set(evaluations.map((e) => e.playerId));
       const resultPlayerIds = new Set(result.playerRankings.map((r) => r.playerId));
@@ -732,7 +732,7 @@ describe('computeAnalysis', () => {
     it('players with no evaluations do not appear in results', () => {
       // Add an extra player with no evaluations
       const extraPlayers = [...players, { id: 'player-99', name: 'Ghost', number: '99', primaryPosition: '', secondaryPosition: '' }];
-      const result = computeAnalysis(evaluations, extraPlayers, coaches, [], true);
+      const result = computeAnalysis(evaluations, extraPlayers, coaches, [], [], true);
       const ghost = result.playerRankings.find((r) => r.playerId === 'player-99');
       expect(ghost).toBeUndefined();
     });
@@ -740,19 +740,19 @@ describe('computeAnalysis', () => {
 
   describe('Metadata', () => {
     it('metadata totalPlayers reflects unique players with evaluations', () => {
-      const result = computeAnalysis(evaluations, players, coaches, [], true);
+      const result = computeAnalysis(evaluations, players, coaches, [], [], true);
       const uniquePlayers = new Set(evaluations.map((e) => e.playerId));
       expect(result.metadata.totalPlayers).toBe(uniquePlayers.size);
     });
 
     it('metadata totalCoaches reflects unique coaches in filtered set', () => {
-      const result = computeAnalysis(evaluations, players, coaches, [], true);
+      const result = computeAnalysis(evaluations, players, coaches, [], [], true);
       const uniqueCoaches = new Set(evaluations.map((e) => e.coachId));
       expect(result.metadata.totalCoaches).toBe(uniqueCoaches.size);
     });
 
     it('metadata totalEvaluations matches filtered evaluation count', () => {
-      const result = computeAnalysis(evaluations, players, coaches, ['coach-1'], true);
+      const result = computeAnalysis(evaluations, players, coaches, ['coach-1'], [], true);
       const filteredCount = evaluations.filter((e) => e.coachId !== 'coach-1').length;
       expect(result.metadata.totalEvaluations).toBe(filteredCount);
     });
@@ -760,7 +760,7 @@ describe('computeAnalysis', () => {
 
   describe('Full dataset smoke test', () => {
     it('full analysis runs without errors and returns complete structure', () => {
-      const result = computeAnalysis(evaluations, players, coaches, [], true);
+      const result = computeAnalysis(evaluations, players, coaches, [], [], true);
 
       // Structure checks
       expect(result.playerRankings.length).toBeGreaterThan(0);
@@ -806,8 +806,8 @@ describe('computeAnalysis', () => {
     });
 
     it('excluding a generous coach reduces bias in overall scores', () => {
-      const resultAll = computeAnalysis(evaluations, players, coaches, [], true);
-      const resultExcl = computeAnalysis(evaluations, players, coaches, ['coach-1'], true);
+      const resultAll = computeAnalysis(evaluations, players, coaches, [], [], true);
+      const resultExcl = computeAnalysis(evaluations, players, coaches, ['coach-1'], [], true);
 
       // Both should produce valid results
       expect(resultAll.playerRankings.length).toBeGreaterThan(0);
