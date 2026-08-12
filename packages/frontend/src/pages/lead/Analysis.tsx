@@ -19,6 +19,7 @@ type TabId = 'rankings' | 'boxplots' | 'coachAnalysis' | 'distribution' | 'exclu
 export default function Analysis() {
   const [activeTab, setActiveTab] = useState<TabId>('rankings');
   const [analysis, setAnalysis] = useState<AnalysisResponse | null>(null);
+  const [unfilteredAnalysis, setUnfilteredAnalysis] = useState<AnalysisResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [excludedCoachIds, setExcludedCoachIds] = useState<string[]>([]);
@@ -65,8 +66,12 @@ export default function Analysis() {
     try {
       const coachIds = exclusionMode === 'include_all' ? [] : excludedCoachIds;
       const ratings = exclusionMode === 'include_all' ? [] : excludedRatings;
-      const data = await evaluations.analysis(coachIds, ratings);
+      const [data, unfilteredData] = await Promise.all([
+        evaluations.analysis(coachIds, ratings),
+        evaluations.analysis([], []),
+      ]);
       setAnalysis(data);
+      setUnfilteredAnalysis(unfilteredData);
       setError('');
     } catch (err: any) {
       setError(err.message);
@@ -144,6 +149,16 @@ export default function Analysis() {
       coachName: coachNameMap.get(cr.coachId) || cr.coachName,
     }));
   }, [analysis, anonymize, coachNameMap]);
+
+  // Unfiltered reliability for the Exclusions tab (always shows all ratings)
+  const unfilteredReliability = useMemo(() => {
+    if (!unfilteredAnalysis) return [];
+    if (!anonymize) return unfilteredAnalysis.coachReliability;
+    return unfilteredAnalysis.coachReliability.map((cr) => ({
+      ...cr,
+      coachName: coachNameMap.get(cr.coachId) || cr.coachName,
+    }));
+  }, [unfilteredAnalysis, anonymize, coachNameMap]);
 
   // Show toggle on these tabs
   const showExclusionToggle = activeTab !== 'exclusions';
@@ -315,7 +330,7 @@ export default function Analysis() {
           )}
           {activeTab === 'exclusions' && (
             <ExclusionsTab
-              reliability={displayReliability}
+              reliability={unfilteredReliability}
               coaches={anonymize ? coachList.map(c => ({ id: c.id, name: coachNameMap.get(c.id) || c.name })) : coachList}
               excludedRatings={excludedRatings}
               onExcludedRatingsChange={handleExcludedRatingsChange}
