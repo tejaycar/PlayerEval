@@ -1,18 +1,28 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { evaluations, players as playersApi, coaches as coachesApi, team } from '../../api';
 import type { NormalizedPlayerScore, ExcludedRating } from '@player-eval/shared';
 import { RATING_LABELS } from './ratingLabels';
 
-interface PlayerEval {
+interface NormalizedIndividualEval {
   coachId: string;
   coachName: string;
-  attitude: number;
-  effort: number;
-  footballIQ: number;
-  generalSkill: number;
-  positionSkill: number;
-  totalScore: number;
+  raw: {
+    attitude: number;
+    effort: number;
+    footballIQ: number;
+    generalSkill: number;
+    positionSkill: number;
+    totalScore: number;
+  };
+  normalized: {
+    attitude: number;
+    effort: number;
+    footballIQ: number;
+    generalSkill: number;
+    positionSkill: number;
+    totalScore: number;
+  };
 }
 
 interface Player {
@@ -26,10 +36,11 @@ export default function PlayerSummary() {
   const navigate = useNavigate();
   const [playerList, setPlayerList] = useState<Player[]>([]);
   const [selectedPlayer, setSelectedPlayer] = useState<string>(playerId || '');
-  const [evalData, setEvalData] = useState<PlayerEval[]>([]);
+  const [normalizedEvals, setNormalizedEvals] = useState<NormalizedIndividualEval[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [anonymize, setAnonymize] = useState(true);
+  const [showRaw, setShowRaw] = useState(false);
   const [coachNameMap, setCoachNameMap] = useState<Map<string, string>>(new Map());
   const [excludedCoachIds, setExcludedCoachIds] = useState<string[]>([]);
   const [excludedRatings, setExcludedRatings] = useState<ExcludedRating[]>([]);
@@ -77,7 +88,7 @@ export default function PlayerSummary() {
       });
       setCoachNameMap(map);
     } catch {
-      // Ignore - will fall back to real names
+      // Ignore
     }
   };
 
@@ -104,11 +115,7 @@ export default function PlayerSummary() {
   const loadEvaluations = async (pid: string) => {
     try {
       const data = await evaluations.playerDetail(pid);
-      setEvalData(data.evaluations || data.normalizedEvals?.map((ne: any) => ({
-        coachId: ne.coachId,
-        coachName: ne.coachName,
-        ...ne.raw,
-      })) || []);
+      setNormalizedEvals(data.normalizedEvals || []);
     } catch (err: any) {
       setError(err.message);
     }
@@ -121,7 +128,7 @@ export default function PlayerSummary() {
       const data = await evaluations.analysis(coachIds, ratings);
       setAllNormalized(data.playerRankings);
     } catch {
-      // Ignore - normalized data is supplemental
+      // Ignore
     }
   };
 
@@ -140,30 +147,45 @@ export default function PlayerSummary() {
     return excludedRatings.some((r) => r.coachId === coachId && r.playerId === playerId);
   };
 
-  const isRowExcluded = (ev: PlayerEval) => {
+  const isRowExcluded = (ev: NormalizedIndividualEval) => {
     return isCoachExcluded(ev.coachId) || isRatingExcluded(ev.coachId, selectedPlayer);
   };
 
-  // Calculate averages only from non-excluded evaluations
-  const calculateAverages = () => {
-    const included = evalData.filter((ev) => !isRowExcluded(ev));
+  // Calculate normalized averages only from non-excluded evaluations
+  const calculateNormalizedAverages = () => {
+    const included = normalizedEvals.filter((ev) => !isRowExcluded(ev));
     if (included.length === 0) return null;
     const count = included.length;
     return {
-      attitude: Math.round((included.reduce((s, e) => s + e.attitude, 0) / count) * 10) / 10,
-      effort: Math.round((included.reduce((s, e) => s + e.effort, 0) / count) * 10) / 10,
-      footballIQ: Math.round((included.reduce((s, e) => s + e.footballIQ, 0) / count) * 10) / 10,
-      generalSkill: Math.round((included.reduce((s, e) => s + e.generalSkill, 0) / count) * 10) / 10,
-      positionSkill: Math.round((included.reduce((s, e) => s + e.positionSkill, 0) / count) * 10) / 10,
-      totalScore: Math.round((included.reduce((s, e) => s + e.totalScore, 0) / count) * 10) / 10,
+      attitude: Math.round((included.reduce((s, e) => s + e.normalized.attitude, 0) / count) * 100) / 100,
+      effort: Math.round((included.reduce((s, e) => s + e.normalized.effort, 0) / count) * 100) / 100,
+      footballIQ: Math.round((included.reduce((s, e) => s + e.normalized.footballIQ, 0) / count) * 100) / 100,
+      generalSkill: Math.round((included.reduce((s, e) => s + e.normalized.generalSkill, 0) / count) * 100) / 100,
+      positionSkill: Math.round((included.reduce((s, e) => s + e.normalized.positionSkill, 0) / count) * 100) / 100,
+      totalScore: Math.round((included.reduce((s, e) => s + e.normalized.totalScore, 0) / count) * 100) / 100,
+    };
+  };
+
+  const calculateRawAverages = () => {
+    const included = normalizedEvals.filter((ev) => !isRowExcluded(ev));
+    if (included.length === 0) return null;
+    const count = included.length;
+    return {
+      attitude: Math.round((included.reduce((s, e) => s + e.raw.attitude, 0) / count) * 10) / 10,
+      effort: Math.round((included.reduce((s, e) => s + e.raw.effort, 0) / count) * 10) / 10,
+      footballIQ: Math.round((included.reduce((s, e) => s + e.raw.footballIQ, 0) / count) * 10) / 10,
+      generalSkill: Math.round((included.reduce((s, e) => s + e.raw.generalSkill, 0) / count) * 10) / 10,
+      positionSkill: Math.round((included.reduce((s, e) => s + e.raw.positionSkill, 0) / count) * 10) / 10,
+      totalScore: Math.round((included.reduce((s, e) => s + e.raw.totalScore, 0) / count) * 10) / 10,
     };
   };
 
   if (loading) return <div className="text-center py-8">Loading...</div>;
 
-  const averages = calculateAverages();
+  const normalizedAverages = calculateNormalizedAverages();
+  const rawAverages = calculateRawAverages();
   const selectedPlayerData = playerList.find((p) => p.id === selectedPlayer);
-  const normalizedForPlayer = allNormalized.find((p) => p.playerId === selectedPlayer);
+  const playerNormalized = allNormalized.find((p) => p.playerId === selectedPlayer);
 
   return (
     <div>
@@ -202,6 +224,15 @@ export default function PlayerSummary() {
             />
             <span className="text-gray-600">Anonymize coaches</span>
           </label>
+          <label className="inline-flex items-center gap-2 text-sm cursor-pointer">
+            <input
+              type="checkbox"
+              checked={showRaw}
+              onChange={(e) => setShowRaw(e.target.checked)}
+              className="rounded border-gray-300"
+            />
+            <span className="text-gray-600">Show raw scores</span>
+          </label>
         </div>
         {/* Exclusion mode toggle */}
         <div className="mt-6">
@@ -236,11 +267,11 @@ export default function PlayerSummary() {
             #{selectedPlayerData.number} {selectedPlayerData.name}
           </h3>
 
-          {evalData.length === 0 ? (
+          {normalizedEvals.length === 0 ? (
             <p className="text-gray-500">No evaluations yet for this player.</p>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full bg-white rounded-lg shadow-sm border">
+              <table className="w-full bg-white rounded-lg shadow-sm border text-sm">
                 <thead className="bg-gray-50">
                   <tr>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Evaluator</th>
@@ -253,47 +284,62 @@ export default function PlayerSummary() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
-                  {evalData.map((ev, i) => {
+                  {normalizedEvals.map((ev, i) => {
                     const excluded = isRowExcluded(ev);
                     return (
-                      <tr key={i} className={excluded ? 'bg-red-50' : 'hover:bg-gray-50'}>
-                        <td className={`px-4 py-3 text-sm font-medium ${excluded ? 'text-red-400' : ''}`}>
-                          {getCoachDisplayName(ev.coachId, ev.coachName)}
-                          {excluded && (
-                            <span className="ml-2 text-xs text-red-400 italic">(excluded)</span>
-                          )}
-                        </td>
-                        <td className={`px-4 py-3 text-sm text-center ${excluded ? 'text-red-400' : ''}`}>{ev.attitude}</td>
-                        <td className={`px-4 py-3 text-sm text-center ${excluded ? 'text-red-400' : ''}`}>{ev.effort}</td>
-                        <td className={`px-4 py-3 text-sm text-center ${excluded ? 'text-red-400' : ''}`}>{ev.footballIQ}</td>
-                        <td className={`px-4 py-3 text-sm text-center ${excluded ? 'text-red-400' : ''}`}>{ev.generalSkill}</td>
-                        <td className={`px-4 py-3 text-sm text-center ${excluded ? 'text-red-400' : ''}`}>{ev.positionSkill}</td>
-                        <td className={`px-4 py-3 text-sm text-center font-bold ${excluded ? 'text-red-400' : ''}`}>{ev.totalScore}</td>
-                      </tr>
+                      <React.Fragment key={i}>
+                        {/* Normalized row (default) */}
+                        <tr className={excluded ? 'bg-red-50' : 'hover:bg-gray-50'}>
+                          <td className={`px-4 py-2 font-medium ${excluded ? 'text-red-400' : ''}`}>
+                            {getCoachDisplayName(ev.coachId, ev.coachName)}
+                            {excluded && (
+                              <span className="ml-2 text-xs text-red-400 italic">(excluded)</span>
+                            )}
+                          </td>
+                          <td className={`px-4 py-2 text-center ${excluded ? 'text-red-400' : ''}`}>{ev.normalized.attitude}</td>
+                          <td className={`px-4 py-2 text-center ${excluded ? 'text-red-400' : ''}`}>{ev.normalized.effort}</td>
+                          <td className={`px-4 py-2 text-center ${excluded ? 'text-red-400' : ''}`}>{ev.normalized.footballIQ}</td>
+                          <td className={`px-4 py-2 text-center ${excluded ? 'text-red-400' : ''}`}>{ev.normalized.generalSkill}</td>
+                          <td className={`px-4 py-2 text-center ${excluded ? 'text-red-400' : ''}`}>{ev.normalized.positionSkill}</td>
+                          <td className={`px-4 py-2 text-center font-bold ${excluded ? 'text-red-400' : ''}`}>{ev.normalized.totalScore}</td>
+                        </tr>
+                        {/* Raw sub-row (toggled) */}
+                        {showRaw && (
+                          <tr className="bg-gray-50 text-gray-400 text-xs">
+                            <td className="px-4 py-1 italic">raw</td>
+                            <td className="px-4 py-1 text-center">{ev.raw.attitude}</td>
+                            <td className="px-4 py-1 text-center">{ev.raw.effort}</td>
+                            <td className="px-4 py-1 text-center">{ev.raw.footballIQ}</td>
+                            <td className="px-4 py-1 text-center">{ev.raw.generalSkill}</td>
+                            <td className="px-4 py-1 text-center">{ev.raw.positionSkill}</td>
+                            <td className="px-4 py-1 text-center">{ev.raw.totalScore}</td>
+                          </tr>
+                        )}
+                      </React.Fragment>
                     );
                   })}
-                  {/* Raw Average row (non-excluded only) */}
-                  {averages && (
-                    <tr className="bg-blue-50 font-semibold border-t-2 border-gray-300">
-                      <td className="px-4 py-3 text-sm">Raw Average</td>
-                      <td className="px-4 py-3 text-sm text-center">{averages.attitude}</td>
-                      <td className="px-4 py-3 text-sm text-center">{averages.effort}</td>
-                      <td className="px-4 py-3 text-sm text-center">{averages.footballIQ}</td>
-                      <td className="px-4 py-3 text-sm text-center">{averages.generalSkill}</td>
-                      <td className="px-4 py-3 text-sm text-center">{averages.positionSkill}</td>
-                      <td className="px-4 py-3 text-sm text-center font-bold">{averages.totalScore}</td>
+                  {/* Normalized Average row */}
+                  {normalizedAverages && (
+                    <tr className="bg-green-50 font-semibold border-t-2 border-gray-300">
+                      <td className="px-4 py-3">Normalized Average</td>
+                      <td className="px-4 py-3 text-center">{normalizedAverages.attitude}</td>
+                      <td className="px-4 py-3 text-center">{normalizedAverages.effort}</td>
+                      <td className="px-4 py-3 text-center">{normalizedAverages.footballIQ}</td>
+                      <td className="px-4 py-3 text-center">{normalizedAverages.generalSkill}</td>
+                      <td className="px-4 py-3 text-center">{normalizedAverages.positionSkill}</td>
+                      <td className="px-4 py-3 text-center font-bold text-green-700">{normalizedAverages.totalScore}</td>
                     </tr>
                   )}
-                  {/* Normalized row */}
-                  {normalizedForPlayer && (
-                    <tr className="bg-green-50 font-semibold">
-                      <td className="px-4 py-3 text-sm">Normalized (Z-Score)</td>
-                      <td className="px-4 py-3 text-sm text-center">{normalizedForPlayer.categories.attitude}</td>
-                      <td className="px-4 py-3 text-sm text-center">{normalizedForPlayer.categories.effort}</td>
-                      <td className="px-4 py-3 text-sm text-center">{normalizedForPlayer.categories.footballIQ}</td>
-                      <td className="px-4 py-3 text-sm text-center">{normalizedForPlayer.categories.generalSkill}</td>
-                      <td className="px-4 py-3 text-sm text-center">{normalizedForPlayer.categories.positionSkill}</td>
-                      <td className="px-4 py-3 text-sm text-center font-bold text-green-700">{normalizedForPlayer.normalizedTotal}</td>
+                  {/* Raw Average row (toggled) */}
+                  {showRaw && rawAverages && (
+                    <tr className="bg-blue-50 font-semibold">
+                      <td className="px-4 py-3">Raw Average</td>
+                      <td className="px-4 py-3 text-center">{rawAverages.attitude}</td>
+                      <td className="px-4 py-3 text-center">{rawAverages.effort}</td>
+                      <td className="px-4 py-3 text-center">{rawAverages.footballIQ}</td>
+                      <td className="px-4 py-3 text-center">{rawAverages.generalSkill}</td>
+                      <td className="px-4 py-3 text-center">{rawAverages.positionSkill}</td>
+                      <td className="px-4 py-3 text-center font-bold">{rawAverages.totalScore}</td>
                     </tr>
                   )}
                 </tbody>
