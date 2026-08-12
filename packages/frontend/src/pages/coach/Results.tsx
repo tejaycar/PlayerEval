@@ -4,8 +4,6 @@ import type { NormalizedPlayerScore, RatingCategory } from '@player-eval/shared'
 
 type SortField = 'normalizedTotal' | 'attitude' | 'effort' | 'footballIQ' | 'generalSkill' | 'positionSkill';
 
-const STRING_FIELDS = new Set(['playerName', 'playerNumber', 'primaryPosition', 'secondaryPosition']);
-
 export default function Results() {
   const [rankings, setRankings] = useState<NormalizedPlayerScore[]>([]);
   const [loading, setLoading] = useState(true);

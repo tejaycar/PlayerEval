@@ -315,8 +315,8 @@ export default function Analysis() {
           )}
           {activeTab === 'exclusions' && (
             <ExclusionsTab
-              reliability={analysis.coachReliability}
-              coaches={coachList}
+              reliability={displayReliability}
+              coaches={anonymize ? coachList.map(c => ({ id: c.id, name: coachNameMap.get(c.id) || c.name })) : coachList}
               excludedRatings={excludedRatings}
               onExcludedRatingsChange={handleExcludedRatingsChange}
             />

@@ -195,6 +195,9 @@ export async function handler(event: Event): Promise<Result> {
   }
 
   // GET /team/excluded-coaches - Get persisted excluded coach IDs
+  // NOTE: Intentionally accessible to all authenticated team members (not just leads).
+  // The coach view always applies the lead's saved exclusions to produce consistent
+  // normalized scores, so coaches need to read this state to pass it to the analysis endpoint.
   if (method === 'GET' && path === '/team/excluded-coaches') {
     const teamMeta = await getItem(`TEAM#${teamId}`, 'META');
     return json(200, { excludedCoachIds: teamMeta?.excludedCoachIds || [] });
@@ -210,6 +213,9 @@ export async function handler(event: Event): Promise<Result> {
   }
 
   // GET /team/excluded-ratings - Get persisted excluded ratings
+  // NOTE: Intentionally accessible to all authenticated team members (not just leads).
+  // The coach view always applies the lead's saved exclusions to produce consistent
+  // normalized scores, so coaches need to read this state to pass it to the analysis endpoint.
   if (method === 'GET' && path === '/team/excluded-ratings') {
     const teamMeta = await getItem(`TEAM#${teamId}`, 'META');
     return json(200, { excludedRatings: teamMeta?.excludedRatings || [] });
@@ -220,8 +226,12 @@ export async function handler(event: Event): Promise<Result> {
     if (!isLead) return json(403, { error: 'Only leads can manage rating exclusions' });
     const { excludedRatings } = parseBody(event);
     if (!Array.isArray(excludedRatings)) return json(400, { error: 'excludedRatings must be an array' });
-    await updateItem(`TEAM#${teamId}`, 'META', { excludedRatings });
-    return json(200, { excludedRatings });
+    // Validate each element has string coachId and playerId, filter out invalid entries
+    const validRatings = excludedRatings.filter(
+      (r: any) => r && typeof r.coachId === 'string' && typeof r.playerId === 'string' && r.coachId.length > 0 && r.playerId.length > 0
+    );
+    await updateItem(`TEAM#${teamId}`, 'META', { excludedRatings: validRatings });
+    return json(200, { excludedRatings: validRatings });
   }
 
   // POST /team - Create team (first time setup)

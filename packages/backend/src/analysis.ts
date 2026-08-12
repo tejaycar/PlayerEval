@@ -459,7 +459,7 @@ export function computeAnalysis(
       coachReliability.push({
         coachId,
         coachName: coach.name,
-        playersRated: excNormEvals.length,
+        playersRated: deviations.length,
         madFromMedian: round2(mean(absDeviationsFromMedian)),
         meanDeviationFromMean: round2(mean(deviationsFromMean)),
         rankCorrelation: rankCorr,
