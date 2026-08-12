@@ -1,26 +1,44 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { evaluations, team } from '../../api';
-import type { BoxPlotStats } from '@player-eval/shared';
+import { evaluations, team, coaches as coachesApi, getStoredUser } from '../../api';
+import type { BoxPlotStats, CoachReliabilityMetrics } from '@player-eval/shared';
 import PlayerBoxPlotsTab from '../lead/analysis/PlayerBoxPlotsTab';
+import CoachAnalysisTab from '../lead/analysis/CoachAnalysisTab';
+
+type TabId = 'boxplots' | 'coachAnalysis';
 
 export default function CoachAnalysis() {
+  const [activeTab, setActiveTab] = useState<TabId>('boxplots');
   const [boxPlots, setBoxPlots] = useState<BoxPlotStats[]>([]);
+  const [coachReliability, setCoachReliability] = useState<CoachReliabilityMetrics[]>([]);
+  const [coachList, setCoachList] = useState<{ id: string; name: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [playerFilter, setPlayerFilter] = useState('');
 
+  const currentUser = getStoredUser();
+
   useEffect(() => {
-    loadAnalysis();
+    loadData();
   }, []);
 
-  const loadAnalysis = async () => {
+  const loadData = async () => {
     try {
-      // Load the lead's saved exclusions
-      const exclusionData = await team.getExcludedCoaches();
-      const excludedIds = exclusionData.excludedCoachIds || [];
+      // Load coaches list for anonymization
+      const coachData = await coachesApi.list();
+      setCoachList(coachData.coaches.map((c: any) => ({ id: c.id, name: c.name })));
+
+      // Load the lead's saved exclusions and apply them (always "exclude flagged")
+      const [coachExclusionData, ratingsData] = await Promise.all([
+        team.getExcludedCoaches(),
+        team.getExcludedRatings(),
+      ]);
+      const excludedIds = coachExclusionData.excludedCoachIds || [];
+      const excludedRatings = ratingsData.excludedRatings || [];
+
       // Get analysis with those exclusions
-      const data = await evaluations.analysis(excludedIds);
+      const data = await evaluations.analysis(excludedIds, excludedRatings);
       setBoxPlots(data.boxPlots);
+      setCoachReliability(data.coachReliability);
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -37,6 +55,26 @@ export default function CoachAnalysis() {
         p.playerNumber.includes(playerFilter)
     );
   }, [boxPlots, playerFilter]);
+
+  // Anonymize coach reliability: all coaches get "Coach N" except current user
+  const anonymizedReliability = useMemo(() => {
+    if (!coachReliability.length) return [];
+    const sortedCoaches = [...coachList].sort((a, b) => a.name.localeCompare(b.name));
+    const nameMap = new Map<string, string>();
+    sortedCoaches.forEach((c, i) => {
+      nameMap.set(c.id, `Coach ${i + 1}`);
+    });
+
+    return coachReliability.map((cr) => ({
+      ...cr,
+      coachName: cr.coachId === currentUser?.coachId ? cr.coachName : (nameMap.get(cr.coachId) || cr.coachName),
+    }));
+  }, [coachReliability, coachList, currentUser?.coachId]);
+
+  const tabs: { id: TabId; label: string }[] = [
+    { id: 'boxplots', label: 'Box Plots' },
+    { id: 'coachAnalysis', label: 'Coach Analysis' },
+  ];
 
   if (loading) return <div className="text-center py-8">Loading analysis...</div>;
 
@@ -55,20 +93,47 @@ export default function CoachAnalysis() {
         Wider boxes indicate less agreement among coaches.
       </p>
 
-      <div className="mb-4">
-        <input
-          type="text"
-          placeholder="Filter players by name or number..."
-          value={playerFilter}
-          onChange={(e) => setPlayerFilter(e.target.value)}
-          className="px-3 py-2 border border-gray-300 rounded w-72 text-sm"
-        />
+      {activeTab === 'boxplots' && (
+        <div className="mb-4">
+          <input
+            type="text"
+            placeholder="Filter players by name or number..."
+            value={playerFilter}
+            onChange={(e) => setPlayerFilter(e.target.value)}
+            className="px-3 py-2 border border-gray-300 rounded w-72 text-sm"
+          />
+        </div>
+      )}
+
+      {/* Tabs */}
+      <div className="border-b border-gray-200 mb-6">
+        <nav className="flex gap-0">
+          {tabs.map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px ${
+                activeTab === tab.id
+                  ? 'border-blue-600 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </nav>
       </div>
 
-      {boxPlots.length === 0 ? (
-        <p className="text-gray-500">No evaluation data available yet.</p>
-      ) : (
-        <PlayerBoxPlotsTab boxPlots={filteredBoxPlots} />
+      {activeTab === 'boxplots' && (
+        boxPlots.length === 0 ? (
+          <p className="text-gray-500">No evaluation data available yet.</p>
+        ) : (
+          <PlayerBoxPlotsTab boxPlots={filteredBoxPlots} />
+        )
+      )}
+
+      {activeTab === 'coachAnalysis' && (
+        <CoachAnalysisTab reliability={anonymizedReliability} />
       )}
     </div>
   );

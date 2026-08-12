@@ -21,10 +21,14 @@ export default function Results() {
   const loadResults = async () => {
     try {
       // Load the lead's saved exclusions
-      const exclusionData = await team.getExcludedCoaches();
-      const excludedIds = exclusionData.excludedCoachIds || [];
+      const [coachExclusionData, ratingsData] = await Promise.all([
+        team.getExcludedCoaches(),
+        team.getExcludedRatings(),
+      ]);
+      const excludedIds = coachExclusionData.excludedCoachIds || [];
+      const excludedRatings = ratingsData.excludedRatings || [];
       // Get analysis with those exclusions
-      const data = await evaluations.analysis(excludedIds);
+      const data = await evaluations.analysis(excludedIds, excludedRatings);
       setRankings(data.playerRankings);
     } catch (err: any) {
       setError(err.message);

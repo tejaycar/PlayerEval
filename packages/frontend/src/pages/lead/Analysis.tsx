@@ -6,12 +6,15 @@ import type {
   BoxPlotStats,
   CoachReliabilityMetrics,
   PlayerImpactWarning,
+  ExcludedRating,
 } from '@player-eval/shared';
 import PlayerRankingsTab from './analysis/PlayerRankingsTab';
 import PlayerBoxPlotsTab from './analysis/PlayerBoxPlotsTab';
-import CoachReliabilityTab from './analysis/CoachReliabilityTab';
+import CoachAnalysisTab from './analysis/CoachAnalysisTab';
+import DistributionTab from './analysis/DistributionTab';
+import ExclusionsTab from './analysis/ExclusionsTab';
 
-type TabId = 'rankings' | 'boxplots' | 'reliability';
+type TabId = 'rankings' | 'boxplots' | 'coachAnalysis' | 'distribution' | 'exclusions';
 
 export default function Analysis() {
   const [activeTab, setActiveTab] = useState<TabId>('rankings');
@@ -19,9 +22,11 @@ export default function Analysis() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [excludedCoachIds, setExcludedCoachIds] = useState<string[]>([]);
+  const [excludedRatings, setExcludedRatings] = useState<ExcludedRating[]>([]);
   const [coachList, setCoachList] = useState<{ id: string; name: string }[]>([]);
   const [playerFilter, setPlayerFilter] = useState('');
   const [anonymize, setAnonymize] = useState(true);
+  const [exclusionMode, setExclusionMode] = useState<'include_all' | 'exclude_flagged'>('exclude_flagged');
 
   useEffect(() => {
     loadCoaches();
@@ -30,7 +35,7 @@ export default function Analysis() {
 
   useEffect(() => {
     loadAnalysis();
-  }, [excludedCoachIds]);
+  }, [excludedCoachIds, excludedRatings, exclusionMode]);
 
 
   const loadCoaches = async () => {
@@ -44,8 +49,12 @@ export default function Analysis() {
 
   const loadSavedExclusions = async () => {
     try {
-      const data = await team.getExcludedCoaches();
-      setExcludedCoachIds(data.excludedCoachIds || []);
+      const [coachData, ratingsData] = await Promise.all([
+        team.getExcludedCoaches(),
+        team.getExcludedRatings(),
+      ]);
+      setExcludedCoachIds(coachData.excludedCoachIds || []);
+      setExcludedRatings(ratingsData.excludedRatings || []);
     } catch (err: any) {
       // Ignore - will just start with empty exclusions
     }
@@ -54,7 +63,9 @@ export default function Analysis() {
   const loadAnalysis = async () => {
     setLoading(true);
     try {
-      const data = await evaluations.analysis(excludedCoachIds);
+      const coachIds = exclusionMode === 'include_all' ? [] : excludedCoachIds;
+      const ratings = exclusionMode === 'include_all' ? [] : excludedRatings;
+      const data = await evaluations.analysis(coachIds, ratings);
       setAnalysis(data);
       setError('');
     } catch (err: any) {
@@ -73,6 +84,11 @@ export default function Analysis() {
       team.saveExcludedCoaches(next).catch(() => {});
       return next;
     });
+  };
+
+  const handleExcludedRatingsChange = (ratings: ExcludedRating[]) => {
+    setExcludedRatings(ratings);
+    team.saveExcludedRatings(ratings).catch(() => {});
   };
 
 
@@ -99,7 +115,9 @@ export default function Analysis() {
   const tabs: { id: TabId; label: string }[] = [
     { id: 'rankings', label: 'Player Rankings' },
     { id: 'boxplots', label: 'Box Plots' },
-    { id: 'reliability', label: 'Coach Reliability' },
+    { id: 'coachAnalysis', label: 'Coach Analysis' },
+    { id: 'distribution', label: 'Distribution' },
+    { id: 'exclusions', label: 'Exclusions' },
   ];
 
   // Build a stable coach name mapping for anonymization
@@ -127,6 +145,9 @@ export default function Analysis() {
     }));
   }, [analysis, anonymize, coachNameMap]);
 
+  // Show toggle on these tabs
+  const showExclusionToggle = activeTab !== 'exclusions';
+
   if (loading && !analysis) {
     return <div className="text-center py-8">Loading analysis...</div>;
   }
@@ -146,7 +167,7 @@ export default function Analysis() {
       {analysis && analysis.playerImpactWarnings.length > 0 && (
         <div className="bg-amber-50 border border-amber-300 text-amber-800 px-4 py-3 rounded mb-4">
           <p className="font-semibold mb-1">
-            Warning: Excluding these coaches drops rating count by more than 1 for some players:
+            Warning: These players have dropped below 5 total reviewers after exclusions:
           </p>
           <ul className="list-disc list-inside text-sm">
             {analysis.playerImpactWarnings.map((w) => (
@@ -203,9 +224,35 @@ export default function Analysis() {
         )}
       </div>
 
+      {/* Include all / Exclude flagged toggle */}
+      {showExclusionToggle && (
+        <div className="mb-4 flex items-center gap-1">
+          <span className="text-sm text-gray-600 mr-2">Exclusion mode:</span>
+          <button
+            onClick={() => setExclusionMode('include_all')}
+            className={`px-3 py-1.5 text-sm rounded-l border ${
+              exclusionMode === 'include_all'
+                ? 'bg-blue-600 text-white border-blue-600'
+                : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+            }`}
+          >
+            Include all
+          </button>
+          <button
+            onClick={() => setExclusionMode('exclude_flagged')}
+            className={`px-3 py-1.5 text-sm rounded-r border-t border-b border-r ${
+              exclusionMode === 'exclude_flagged'
+                ? 'bg-blue-600 text-white border-blue-600'
+                : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+            }`}
+          >
+            Exclude flagged
+          </button>
+        </div>
+      )}
 
       {/* Player Filter */}
-      {activeTab !== 'reliability' && (
+      {activeTab !== 'coachAnalysis' && activeTab !== 'exclusions' && (
         <div className="mb-4">
           <input
             type="text"
@@ -260,8 +307,19 @@ export default function Analysis() {
           {activeTab === 'boxplots' && (
             <PlayerBoxPlotsTab boxPlots={filteredBoxPlots} />
           )}
-          {activeTab === 'reliability' && (
-            <CoachReliabilityTab reliability={displayReliability} />
+          {activeTab === 'coachAnalysis' && (
+            <CoachAnalysisTab reliability={displayReliability} excludedCoachIds={excludedCoachIds} />
+          )}
+          {activeTab === 'distribution' && (
+            <DistributionTab rankings={filteredRankings} />
+          )}
+          {activeTab === 'exclusions' && (
+            <ExclusionsTab
+              reliability={analysis.coachReliability}
+              coaches={coachList}
+              excludedRatings={excludedRatings}
+              onExcludedRatingsChange={handleExcludedRatingsChange}
+            />
           )}
         </>
       )}

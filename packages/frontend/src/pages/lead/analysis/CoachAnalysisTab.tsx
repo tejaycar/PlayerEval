@@ -3,11 +3,16 @@ import type { CoachReliabilityMetrics } from '@player-eval/shared';
 
 interface Props {
   reliability: CoachReliabilityMetrics[];
+  excludedCoachIds?: string[];
 }
 
 type SortField = 'madFromMedian' | 'meanDeviationFromMean' | 'rankCorrelation' | 'playersRated';
 
-export default function CoachReliabilityTab({ reliability }: Props) {
+const InfoTooltip = ({ text }: { text: string }) => (
+  <span className="text-gray-400 text-xs ml-1 cursor-help" title={text}>&#9432;</span>
+);
+
+export default function CoachAnalysisTab({ reliability, excludedCoachIds }: Props) {
   const [sortBy, setSortBy] = useState<SortField>('madFromMedian');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
   const [expandedCoach, setExpandedCoach] = useState<string | null>(null);
@@ -50,15 +55,20 @@ export default function CoachReliabilityTab({ reliability }: Props) {
     return { text: 'Neutral', color: 'text-gray-500' };
   };
 
-  const SortHeader = ({ field, label }: { field: SortField; label: string }) => (
+  const SortHeader = ({ field, label, tooltip }: { field: SortField; label: string; tooltip?: string }) => (
     <th
       className="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase cursor-pointer hover:text-gray-700"
       onClick={() => handleSort(field)}
     >
-      {label} {sortBy === field && (sortDir === 'asc' ? '↑' : '↓')}
+      {label}{tooltip && <InfoTooltip text={tooltip} />} {sortBy === field && (sortDir === 'asc' ? '↑' : '↓')}
     </th>
   );
 
+  const isCoachExcluded = (coachId: string) => {
+    if (excludedCoachIds && excludedCoachIds.includes(coachId)) return true;
+    const coach = reliability.find(c => c.coachId === coachId);
+    return coach?.isExcluded || false;
+  };
 
   return (
     <div>
@@ -73,19 +83,28 @@ export default function CoachReliabilityTab({ reliability }: Props) {
             <tr>
               <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Coach</th>
               <SortHeader field="playersRated" label="Players Rated" />
-              <SortHeader field="madFromMedian" label="MAD from Median" />
-              <SortHeader field="meanDeviationFromMean" label="Bias (Mean Dev)" />
-              <SortHeader field="rankCorrelation" label="Rank Correlation" />
+              <SortHeader field="madFromMedian" label="MAD from Median" tooltip="Mean absolute deviation -- how far this coach's scores typically land from the group consensus." />
+              <SortHeader field="meanDeviationFromMean" label="Bias (Mean Dev)" tooltip="Average direction of deviation -- positive means this coach tends to rate higher than consensus, negative means lower." />
+              <SortHeader field="rankCorrelation" label="Rank Correlation" tooltip="How similarly this coach ranks players compared to the group. 1.0 = perfect agreement on ordering, 0 = no relationship." />
               <th className="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase">Details</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-200">
             {sorted.map((coach) => {
               const bias = getBiasLabel(coach.meanDeviationFromMean);
+              const excluded = isCoachExcluded(coach.coachId);
               return (
                 <React.Fragment key={coach.coachId}>
-                  <tr className="hover:bg-gray-50">
-                    <td className="px-3 py-2 font-medium">{coach.coachName}</td>
+                  <tr className={excluded ? 'bg-red-50' : 'hover:bg-gray-50'}>
+                    <td className="px-3 py-2 font-medium">
+                      {coach.coachName}
+                      {excluded && (
+                        <>
+                          {' '}<span role="img" aria-label="excluded">&#x1F6D1;</span>
+                          <sup><span className="text-gray-400 text-xs cursor-help" title="This evaluator's ratings were excluded from the calculation of average scores.">&#9432;</span></sup>
+                        </>
+                      )}
+                    </td>
                     <td className="px-3 py-2 text-center">{coach.playersRated}</td>
                     <td className="px-3 py-2 text-center">
                       <span className={`px-2 py-0.5 rounded ${getMADColor(coach.madFromMedian)}`}>

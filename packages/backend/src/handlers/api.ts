@@ -767,7 +767,6 @@ export async function handler(event: Event): Promise<Result> {
 
     // Non-leads don't get coach reliability data or raw scores
     if (!isLead) {
-      analysis.coachReliability = [];
       analysis.playerImpactWarnings = [];
       // Strip raw scores — coaches should only see normalized values
       analysis.playerRankings = analysis.playerRankings.map((p) => ({
