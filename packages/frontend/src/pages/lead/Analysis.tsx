@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { evaluations, coaches as coachesApi, team } from '../../api';
+import { evaluations, coaches as coachesApi, team, players as playersApi, assignments as assignmentsApi } from '../../api';
 import type {
   AnalysisResponse,
   NormalizedPlayerScore,
@@ -25,6 +25,8 @@ export default function Analysis() {
   const [excludedCoachIds, setExcludedCoachIds] = useState<string[]>([]);
   const [excludedRatings, setExcludedRatings] = useState<ExcludedRating[]>([]);
   const [coachList, setCoachList] = useState<{ id: string; name: string }[]>([]);
+  const [playerList, setPlayerList] = useState<{ id: string; name: string; number: string }[]>([]);
+  const [assignmentList, setAssignmentList] = useState<{ coachId: string; playerId: string }[]>([]);
   const [playerFilter, setPlayerFilter] = useState('');
   const [anonymize, setAnonymize] = useState(true);
   const [exclusionMode, setExclusionMode] = useState<'include_all' | 'exclude_flagged'>('exclude_flagged');
@@ -50,8 +52,14 @@ export default function Analysis() {
 
   const loadCoaches = async () => {
     try {
-      const data = await coachesApi.list();
-      setCoachList(data.coaches.map((c: any) => ({ id: c.id, name: c.name })));
+      const [coachData, playerData, assignmentData] = await Promise.all([
+        coachesApi.list(),
+        playersApi.list(),
+        assignmentsApi.list(),
+      ]);
+      setCoachList(coachData.coaches.map((c: any) => ({ id: c.id, name: c.name })));
+      setPlayerList(playerData.players.map((p: any) => ({ id: p.id, name: p.name, number: p.number })));
+      setAssignmentList(assignmentData.assignments || []);
     } catch (err: any) {
       setError(err.message);
     }
@@ -343,6 +351,8 @@ export default function Analysis() {
             <ExclusionsTab
               reliability={unfilteredReliability}
               coaches={anonymize ? coachList.map(c => ({ id: c.id, name: coachNameMap.get(c.id) || c.name })) : coachList}
+              players={playerList}
+              assignments={assignmentList}
               excludedRatings={excludedRatings}
               onExcludedRatingsChange={handleExcludedRatingsChange}
             />
