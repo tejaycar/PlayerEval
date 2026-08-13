@@ -22,9 +22,19 @@ export interface NormalizedPlayerScore {
   secondaryPosition: string;
   evaluationCount: number; // how many coaches rated this player (after exclusions)
   rawTotal: number; // average raw total across coaches
-  normalizedTotal: number; // Z-score normalized total, rescaled
+  normalizedTotal: number; // Z-score normalized total, rescaled (mean of normalized scores)
+  /** Median of normalized scores across coaches */
+  medianTotal: number;
   categories: Record<RatingCategory, number>; // normalized category scores (rescaled)
   rawCategories: Record<RatingCategory, number>; // raw average category scores
+  /** Standard Error of the Mean: stddev / sqrt(n) — how much the average might wobble */
+  sem: number;
+  /** 95% confidence interval half-width: SEM * t-critical (or 1.96 for large n) */
+  ci95: number;
+  /** Standard deviation of normalized scores across coaches */
+  stddev: number;
+  /** Coefficient of Variation: stddev / |mean| — normalized disagreement */
+  cv: number;
 }
 
 // === Box Plot Statistics ===
@@ -36,11 +46,18 @@ export interface BoxPlotStats {
   min: number;
   q1: number;
   median: number;
+  mean: number;
   q3: number;
   max: number;
   iqr: number;
   outliers: number[]; // individual normalized total scores that are outliers
   dataPoints: number[]; // all normalized total scores for this player
+  /** Number of evaluators */
+  n: number;
+  /** Standard Error of the Mean */
+  sem: number;
+  /** 95% confidence interval half-width */
+  ci95: number;
 }
 
 // === Coach Reliability Metrics ===

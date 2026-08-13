@@ -79,6 +79,34 @@ function quartiles(values: number[]): { q1: number; median: number; q3: number }
 }
 
 /**
+ * Approximate t-critical value for 95% CI (two-tailed).
+ * Uses a small lookup table for df 1-30, and 1.96 for df > 30.
+ */
+function tCritical95(df: number): number {
+  // t-distribution critical values for 95% CI (α=0.025 two-tailed)
+  const table: Record<number, number> = {
+    1: 12.706, 2: 4.303, 3: 3.182, 4: 2.776, 5: 2.571,
+    6: 2.447, 7: 2.365, 8: 2.306, 9: 2.262, 10: 2.228,
+    11: 2.201, 12: 2.179, 13: 2.160, 14: 2.145, 15: 2.131,
+    16: 2.120, 17: 2.110, 18: 2.101, 19: 2.093, 20: 2.086,
+    25: 2.060, 30: 2.042,
+  };
+  if (df <= 0) return 1.96;
+  if (table[df]) return table[df];
+  if (df < 30) {
+    // Linear interpolation between nearest known values
+    const keys = Object.keys(table).map(Number).sort((a, b) => a - b);
+    for (let i = 0; i < keys.length - 1; i++) {
+      if (df > keys[i] && df < keys[i + 1]) {
+        const ratio = (df - keys[i]) / (keys[i + 1] - keys[i]);
+        return table[keys[i]] * (1 - ratio) + table[keys[i + 1]] * ratio;
+      }
+    }
+  }
+  return 1.96;
+}
+
+/**
  * Spearman rank correlation between two arrays.
  * Returns value in [-1, 1]. Returns 0 if insufficient data.
  */
@@ -345,6 +373,14 @@ export function computeAnalysis(
 
     const normalizedTotals = playerNormEvals.map((e) => e.normalizedTotal);
     const avgNormalizedTotal = mean(normalizedTotals);
+    const medNormalizedTotal = median(normalizedTotals);
+    const sdNormalizedTotal = stddev(normalizedTotals);
+    const n = playerNormEvals.length;
+    const semValue = n > 1 ? sdNormalizedTotal / Math.sqrt(n) : 0;
+    const df = n - 1;
+    const tCrit = tCritical95(df);
+    const ci95Value = n > 1 ? semValue * tCrit : 0;
+    const cvValue = avgNormalizedTotal !== 0 ? sdNormalizedTotal / Math.abs(avgNormalizedTotal) : 0;
 
     // Raw averages
     const rawPlayerEvals = filteredEvals.filter((e) => e.playerId === playerId);
@@ -362,11 +398,16 @@ export function computeAnalysis(
       playerNumber: player.number,
       primaryPosition: player.primaryPosition || '',
       secondaryPosition: player.secondaryPosition || '',
-      evaluationCount: playerNormEvals.length,
+      evaluationCount: n,
       rawTotal: mean(rawPlayerEvals.map((e) => e.totalScore)),
       normalizedTotal: round2(avgNormalizedTotal),
+      medianTotal: round2(medNormalizedTotal),
       categories: roundRecord(normalizedCategoryAverages) as Record<RatingCategory, number>,
       rawCategories: roundRecord(rawCategories) as Record<RatingCategory, number>,
+      sem: round2(semValue),
+      ci95: round2(ci95Value),
+      stddev: round2(sdNormalizedTotal),
+      cv: round2(cvValue),
     });
 
     // Box plot for this player
@@ -383,11 +424,15 @@ export function computeAnalysis(
       min: Math.min(...normalizedTotals),
       q1: round2(q.q1),
       median: round2(q.median),
+      mean: round2(avgNormalizedTotal),
       q3: round2(q.q3),
       max: Math.max(...normalizedTotals),
       iqr: round2(iqr),
       outliers: outliers.map(round2),
       dataPoints: normalizedTotals.map(round2),
+      n,
+      sem: round2(semValue),
+      ci95: round2(ci95Value),
     });
   }
 

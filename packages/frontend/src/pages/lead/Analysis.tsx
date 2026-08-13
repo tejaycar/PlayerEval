@@ -14,8 +14,9 @@ import CoachAnalysisTab from './analysis/CoachAnalysisTab';
 import DistributionTab from './analysis/DistributionTab';
 import ExclusionsTab from './analysis/ExclusionsTab';
 import RatingIntegrityTab from './analysis/RatingIntegrityTab';
+import RankSensitivityTab from './analysis/RankSensitivityTab';
 
-type TabId = 'rankings' | 'boxplots' | 'coachAnalysis' | 'distribution' | 'exclusions' | 'integrity';
+type TabId = 'rankings' | 'boxplots' | 'coachAnalysis' | 'distribution' | 'exclusions' | 'integrity' | 'sensitivity';
 
 export default function Analysis() {
   const [activeTab, setActiveTab] = useState<TabId>('rankings');
@@ -92,6 +93,16 @@ export default function Analysis() {
     }
   };
 
+  /** Run analysis with a custom set of excluded coach IDs (for LOCO sensitivity analysis) */
+  const getAnalysisForExclusion = async (coachIds: string[]): Promise<AnalysisResponse | null> => {
+    try {
+      const ratings = exclusionMode === 'include_all' ? [] : excludedRatings;
+      return await evaluations.analysis(coachIds, ratings, true);
+    } catch (err: any) {
+      return null;
+    }
+  };
+
   const toggleCoachExclusion = (coachId: string) => {
     setExcludedCoachIds((prev) => {
       const next = prev.includes(coachId)
@@ -134,6 +145,7 @@ export default function Analysis() {
     { id: 'boxplots', label: 'Box Plots' },
     { id: 'coachAnalysis', label: 'Coach Analysis' },
     { id: 'distribution', label: 'Distribution' },
+    { id: 'sensitivity', label: 'Rank Sensitivity' },
     { id: 'exclusions', label: 'Exclusions' },
     { id: 'integrity', label: 'Rating Integrity' },
   ];
@@ -174,7 +186,7 @@ export default function Analysis() {
   }, [unfilteredAnalysis, anonymize, coachNameMap]);
 
   // Show toggle on these tabs
-  const showExclusionToggle = activeTab !== 'exclusions' && activeTab !== 'integrity';
+  const showExclusionToggle = activeTab !== 'exclusions' && activeTab !== 'integrity' && activeTab !== 'sensitivity';
 
   if (loading && !analysis) {
     return <div className="text-center py-8">Loading analysis...</div>;
@@ -280,7 +292,7 @@ export default function Analysis() {
       )}
 
       {/* Player Filter */}
-      {activeTab !== 'coachAnalysis' && activeTab !== 'exclusions' && activeTab !== 'integrity' && (
+      {activeTab !== 'coachAnalysis' && activeTab !== 'exclusions' && activeTab !== 'integrity' && activeTab !== 'sensitivity' && (
         <div className="mb-4">
           <input
             type="text"
@@ -351,6 +363,15 @@ export default function Analysis() {
           )}
           {activeTab === 'integrity' && (
             <RatingIntegrityTab getCoachDisplayName={getCoachDisplayName} />
+          )}
+          {activeTab === 'sensitivity' && (
+            <RankSensitivityTab
+              analysis={analysis}
+              getAnalysisForExclusion={getAnalysisForExclusion}
+              coaches={coachList}
+              currentExcludedCoachIds={excludedCoachIds}
+              getCoachDisplayName={getCoachDisplayName}
+            />
           )}
         </>
       )}
