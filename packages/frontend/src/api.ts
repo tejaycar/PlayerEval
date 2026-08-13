@@ -122,7 +122,7 @@ export const evaluations = {
   summary: () => request('GET', '/evaluations/summary'),
   playerDetail: (playerId: string) => request('GET', `/evaluations/player/${playerId}`),
   submit: (data: any) => request('POST', '/evaluations', data),
-  analysis: (excludedCoachIds?: string[], excludedRatings?: Array<{coachId: string, playerId: string}>) => request('POST', '/evaluations/analysis', { excludedCoachIds: excludedCoachIds || [], excludedRatings: excludedRatings || [] }),
+  analysis: (excludedCoachIds?: string[], excludedRatings?: Array<{coachId: string, playerId: string}>, leadView?: boolean) => request('POST', '/evaluations/analysis', { excludedCoachIds: excludedCoachIds || [], excludedRatings: excludedRatings || [], ...(leadView ? { leadView: true } : {}) }),
 };
 
 // My Players (coach view)

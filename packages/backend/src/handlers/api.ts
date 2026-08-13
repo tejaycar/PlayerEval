@@ -790,8 +790,9 @@ export async function handler(event: Event): Promise<Result> {
 
     const analysis = computeAnalysis(evaluationsData, playersData, coachesData, excludedCoachIds, excludedRatings, isLead);
 
-    // Non-leads don't get raw scores or other coaches' detailed reliability data
-    if (!isLead) {
+    // Only leads explicitly requesting the lead view get full data.
+    // Default (missing leadView flag) is the restricted coach view — safe for cached old front-ends.
+    if (!(isLead && body.leadView)) {
       analysis.playerImpactWarnings = [];
       // Strip raw scores — coaches should only see normalized values
       analysis.playerRankings = analysis.playerRankings.map((p) => ({
