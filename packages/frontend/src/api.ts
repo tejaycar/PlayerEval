@@ -156,6 +156,8 @@ export const evaluations = {
   playerDetail: (playerId: string) => request('GET', `/evaluations/player/${playerId}`),
   submit: (data: any) => request('POST', '/evaluations', data),
   analysis: (excludedCoachIds?: string[], excludedRatings?: Array<{coachId: string, playerId: string}>, leadView?: boolean) => request('POST', '/evaluations/analysis', { excludedCoachIds: excludedCoachIds || [], excludedRatings: excludedRatings || [], ...(leadView ? { leadView: true } : {}) }),
+  history: () => request('GET', '/evaluations/history'),
+  integrity: () => request('POST', '/evaluations/integrity'),
 };
 
 // My Players (coach view)

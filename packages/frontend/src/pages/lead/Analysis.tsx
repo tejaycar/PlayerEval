@@ -13,8 +13,9 @@ import PlayerBoxPlotsTab from './analysis/PlayerBoxPlotsTab';
 import CoachAnalysisTab from './analysis/CoachAnalysisTab';
 import DistributionTab from './analysis/DistributionTab';
 import ExclusionsTab from './analysis/ExclusionsTab';
+import RatingIntegrityTab from './analysis/RatingIntegrityTab';
 
-type TabId = 'rankings' | 'boxplots' | 'coachAnalysis' | 'distribution' | 'exclusions';
+type TabId = 'rankings' | 'boxplots' | 'coachAnalysis' | 'distribution' | 'exclusions' | 'integrity';
 
 export default function Analysis() {
   const [activeTab, setActiveTab] = useState<TabId>('rankings');
@@ -134,6 +135,7 @@ export default function Analysis() {
     { id: 'coachAnalysis', label: 'Coach Analysis' },
     { id: 'distribution', label: 'Distribution' },
     { id: 'exclusions', label: 'Exclusions' },
+    { id: 'integrity', label: 'Rating Integrity' },
   ];
 
   // Build a stable coach name mapping for anonymization
@@ -172,7 +174,7 @@ export default function Analysis() {
   }, [unfilteredAnalysis, anonymize, coachNameMap]);
 
   // Show toggle on these tabs
-  const showExclusionToggle = activeTab !== 'exclusions';
+  const showExclusionToggle = activeTab !== 'exclusions' && activeTab !== 'integrity';
 
   if (loading && !analysis) {
     return <div className="text-center py-8">Loading analysis...</div>;
@@ -278,7 +280,7 @@ export default function Analysis() {
       )}
 
       {/* Player Filter */}
-      {activeTab !== 'coachAnalysis' && activeTab !== 'exclusions' && (
+      {activeTab !== 'coachAnalysis' && activeTab !== 'exclusions' && activeTab !== 'integrity' && (
         <div className="mb-4">
           <input
             type="text"
@@ -346,6 +348,9 @@ export default function Analysis() {
               excludedRatings={excludedRatings}
               onExcludedRatingsChange={handleExcludedRatingsChange}
             />
+          )}
+          {activeTab === 'integrity' && (
+            <RatingIntegrityTab getCoachDisplayName={getCoachDisplayName} />
           )}
         </>
       )}

@@ -1,4 +1,4 @@
-import type { RatingCategory } from './types';
+import type { RatingCategory, RatingHistoryEntry } from './types';
 
 // === Analysis Request/Response Types ===
 
@@ -105,4 +105,64 @@ export interface AnalysisMetadata {
   excludedRatings: ExcludedRating[];
   /** Coaches with stddev=0 who couldn't be Z-normalized */
   undifferentiatingCoaches: string[];
+}
+
+// === Rating Integrity Types ===
+
+export interface LargeChange {
+  coachId: string;
+  playerId: string;
+  timestamp: string;
+  oldTotal: number;
+  newTotal: number;
+  delta: number;
+  categoryDeltas: Record<RatingCategory, number>;
+}
+
+export interface CoordinatedChange {
+  playerId: string;
+  playerName: string;
+  playerNumber: string;
+  changes: Array<{ coachId: string; timestamp: string; delta: number }>;
+  direction: 'increase' | 'decrease';
+  windowStart: string;
+  windowEnd: string;
+}
+
+export interface VarianceChange {
+  coachId: string;
+  playerId: string;
+  timestamp: string;
+  deviationBefore: number;
+  deviationAfter: number;
+  change: number; // positive = moved away from consensus, negative = moved toward
+}
+
+export interface RankShift {
+  coachId: string;
+  playerId: string;
+  timestamp: string;
+  rankBefore: number;
+  rankAfter: number;
+  positionsChanged: number;
+}
+
+export interface CoachIntegritySummary {
+  coachId: string;
+  coachName: string;
+  totalChanges: number;
+  avgMagnitude: number;
+  flagCount: number;
+  lastChangeTimestamp: string | null;
+  netDirection: number;
+}
+
+export interface IntegrityAnalysisResponse {
+  history: RatingHistoryEntry[];
+  largeChanges: LargeChange[];
+  coordinatedChanges: CoordinatedChange[];
+  varianceIncreases: VarianceChange[];
+  varianceDecreases: VarianceChange[];
+  rankShifts: RankShift[];
+  coachSummaries: CoachIntegritySummary[];
 }
