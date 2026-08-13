@@ -1,5 +1,26 @@
 const API_BASE = '/api';
 
+// Version tracking: built-in version vs what the server reports
+declare const __APP_VERSION__: string;
+const BUILD_VERSION: string = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'dev';
+let serverVersion: string | null = null;
+let versionMismatchDetected = false;
+
+export function isVersionMismatch(): boolean {
+  return versionMismatchDetected;
+}
+
+// Listeners for version mismatch events
+type VersionMismatchListener = () => void;
+const versionListeners: VersionMismatchListener[] = [];
+export function onVersionMismatch(listener: VersionMismatchListener): () => void {
+  versionListeners.push(listener);
+  return () => {
+    const idx = versionListeners.indexOf(listener);
+    if (idx >= 0) versionListeners.splice(idx, 1);
+  };
+}
+
 let authToken: string | null = localStorage.getItem('playereval_token');
 
 export function setToken(token: string) {
@@ -54,6 +75,16 @@ async function request(method: string, path: string, body?: any): Promise<any> {
     headers,
     body: body ? JSON.stringify(body) : undefined,
   });
+
+  // Check for version mismatch
+  const reportedVersion = res.headers.get('X-App-Version');
+  if (reportedVersion && BUILD_VERSION !== 'dev' && reportedVersion !== 'dev' && reportedVersion !== BUILD_VERSION) {
+    if (!versionMismatchDetected) {
+      versionMismatchDetected = true;
+      serverVersion = reportedVersion;
+      versionListeners.forEach((fn) => fn());
+    }
+  }
 
   if (res.status === 401) {
     clearToken();

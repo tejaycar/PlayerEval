@@ -1,6 +1,30 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
-import { getStoredUser, clearToken, clearStoredUser } from '../api';
+import { getStoredUser, clearToken, clearStoredUser, isVersionMismatch, onVersionMismatch } from '../api';
+
+function VersionBanner() {
+  const [show, setShow] = useState(isVersionMismatch());
+
+  useEffect(() => {
+    return onVersionMismatch(() => setShow(true));
+  }, []);
+
+  if (!show) return null;
+
+  return (
+    <div className="bg-amber-100 border-b border-amber-300 px-4 py-2 flex items-center justify-between">
+      <span className="text-sm text-amber-800">
+        A new version of PlayerEval is available.
+      </span>
+      <button
+        onClick={() => window.location.reload()}
+        className="px-3 py-1 bg-amber-600 hover:bg-amber-500 text-white rounded text-sm font-medium"
+      >
+        Reload now
+      </button>
+    </div>
+  );
+}
 
 export default function Layout() {
   const location = useLocation();
@@ -25,6 +49,9 @@ export default function Layout() {
 
   return (
     <div className="min-h-screen flex flex-col">
+      {/* Version update banner */}
+      <VersionBanner />
+
       {/* Header */}
       <header className="bg-blue-700 text-white shadow-md">
         <div className="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">

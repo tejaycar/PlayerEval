@@ -28,6 +28,8 @@ jobs:
         run: npm run build -w @player-eval/backend
 
       - name: Build frontend
+        env:
+          APP_VERSION: ${{ github.sha }}
         run: npm run build -w @player-eval/frontend
 
       - name: Configure AWS credentials
@@ -43,6 +45,7 @@ jobs:
         working-directory: packages/infra
         env:
           BRANCH_NAME: ${{ github.event_name == 'pull_request' && github.head_ref || github.ref_name }}
+          APP_VERSION: ${{ github.sha }}
         run: |
           cdk deploy --require-approval never
 
@@ -53,7 +56,15 @@ jobs:
           BRANCH_NAME: ${{ github.event_name == 'pull_request' && github.head_ref || github.ref_name }}
         run: |
           ACTUAL_BRANCH="${BRANCH_NAME}"
-          STACK_NAME=$([[ "$ACTUAL_BRANCH" == "main" ]] && echo "PlayerEval" || echo "PlayerEval-$ACTUAL_BRANCH" | sed 's/[^a-zA-Z0-9]/-/g')
+          # Must match the shortenBranch logic in bin/app.ts
+          SANITIZED=$(echo "$ACTUAL_BRANCH" | sed 's/[^a-zA-Z0-9]/-/g')
+          if [ ${#SANITIZED} -gt 28 ]; then
+            HASH=$(echo -n "$ACTUAL_BRANCH" | sha256sum | cut -c1-8)
+            SHORT_PREFIX="${SANITIZED:0:20}-${HASH}"
+          else
+            SHORT_PREFIX="$SANITIZED"
+          fi
+          STACK_NAME=$([[ "$ACTUAL_BRANCH" == "main" ]] && echo "PlayerEval" || echo "PlayerEval-${SHORT_PREFIX}")
           URL=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --query "Stacks[0].Outputs[?OutputKey=='CloudFrontUrl'].OutputValue" --output text)
           echo "url=$URL" >> $GITHUB_OUTPUT
 

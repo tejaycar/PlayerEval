@@ -1,0 +1,80 @@
+name: Cleanup Branch Stack
+
+on:
+  pull_request:
+    types: [closed]
+  delete:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    # Skip cleanup for main branch (production)
+    if: |
+      (github.event_name == 'delete' && github.event.ref_type == 'branch' && github.event.ref != 'main') ||
+      (github.event_name == 'pull_request' && github.event.pull_request.head.ref != 'main')
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: us-east-2
+
+      - name: Install CDK
+        run: npm install -g aws-cdk
+
+      - name: Determine branch name
+        id: branch
+        run: |
+          if [ "${{ github.event_name }}" = "delete" ]; then
+            BRANCH="${{ github.event.ref }}"
+          else
+            BRANCH="${{ github.event.pull_request.head.ref }}"
+          fi
+          echo "name=$BRANCH" >> $GITHUB_OUTPUT
+
+      - name: Compute stack name
+        id: stack
+        run: |
+          BRANCH="${{ steps.branch.outputs.name }}"
+          # Must match the shortenBranch logic in bin/app.ts
+          SANITIZED=$(echo "$BRANCH" | sed 's/[^a-zA-Z0-9]/-/g')
+          if [ ${#SANITIZED} -gt 28 ]; then
+            HASH=$(echo -n "$BRANCH" | sha256sum | cut -c1-8)
+            SHORT_PREFIX="${SANITIZED:0:20}-${HASH}"
+          else
+            SHORT_PREFIX="$SANITIZED"
+          fi
+          STACK_NAME="PlayerEval-${SHORT_PREFIX}"
+          echo "stack_name=$STACK_NAME" >> $GITHUB_OUTPUT
+          echo "Destroying stack: $STACK_NAME (branch: $BRANCH)"
+
+      - name: Check if stack exists
+        id: check
+        run: |
+          if aws cloudformation describe-stacks --stack-name "${{ steps.stack.outputs.stack_name }}" 2>/dev/null; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Destroy CDK Stack
+        if: steps.check.outputs.exists == 'true'
+        working-directory: packages/infra
+        env:
+          BRANCH_NAME: ${{ steps.branch.outputs.name }}
+        run: |
+          cdk destroy --force "${{ steps.stack.outputs.stack_name }}"

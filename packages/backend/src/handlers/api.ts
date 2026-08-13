@@ -9,6 +9,8 @@ import type { Player, Coach, Evaluation, JWTPayload } from '@player-eval/shared'
 type Event = APIGatewayProxyEventV2;
 type Result = APIGatewayProxyResultV2;
 
+const APP_VERSION = process.env.APP_VERSION || 'dev';
+
 function json(statusCode: number, body: any): Result {
   return {
     statusCode,
@@ -17,6 +19,8 @@ function json(statusCode: number, body: any): Result {
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Test-User',
       'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+      'Access-Control-Expose-Headers': 'X-App-Version',
+      'X-App-Version': APP_VERSION,
     },
     body: JSON.stringify(body),
   };
