@@ -11,12 +11,13 @@ import type {
 import PlayerRankingsTab from './analysis/PlayerRankingsTab';
 import PlayerBoxPlotsTab from './analysis/PlayerBoxPlotsTab';
 import CoachAnalysisTab from './analysis/CoachAnalysisTab';
+import CoachClustersTab from './analysis/CoachClustersTab';
 import DistributionTab from './analysis/DistributionTab';
 import ExclusionsTab from './analysis/ExclusionsTab';
 import RatingIntegrityTab from './analysis/RatingIntegrityTab';
 import RankSensitivityTab from './analysis/RankSensitivityTab';
 
-type TabId = 'rankings' | 'boxplots' | 'coachAnalysis' | 'distribution' | 'exclusions' | 'integrity' | 'sensitivity';
+type TabId = 'rankings' | 'boxplots' | 'coachAnalysis' | 'coachClusters' | 'distribution' | 'exclusions' | 'integrity' | 'sensitivity';
 
 export default function Analysis() {
   const [activeTab, setActiveTab] = useState<TabId>('rankings');
@@ -144,6 +145,7 @@ export default function Analysis() {
     { id: 'rankings', label: 'Player Rankings' },
     { id: 'boxplots', label: 'Box Plots' },
     { id: 'coachAnalysis', label: 'Coach Analysis' },
+    { id: 'coachClusters', label: 'Coach Clusters' },
     { id: 'distribution', label: 'Distribution' },
     { id: 'sensitivity', label: 'Rank Sensitivity' },
     { id: 'exclusions', label: 'Exclusions' },
@@ -292,7 +294,7 @@ export default function Analysis() {
       )}
 
       {/* Player Filter */}
-      {activeTab !== 'coachAnalysis' && activeTab !== 'exclusions' && activeTab !== 'integrity' && activeTab !== 'sensitivity' && (
+      {activeTab !== 'coachAnalysis' && activeTab !== 'coachClusters' && activeTab !== 'exclusions' && activeTab !== 'integrity' && activeTab !== 'sensitivity' && (
         <div className="mb-4">
           <input
             type="text"
@@ -349,6 +351,9 @@ export default function Analysis() {
           )}
           {activeTab === 'coachAnalysis' && (
             <CoachAnalysisTab reliability={displayReliability} excludedCoachIds={excludedCoachIds} excludedRatings={excludedRatings} staffAgreementScore={analysis.staffAgreementScore} staffAgreementLabel={analysis.staffAgreementLabel} />
+          )}
+          {activeTab === 'coachClusters' && (
+            <CoachClustersTab reliability={displayReliability} />
           )}
           {activeTab === 'distribution' && (
             <DistributionTab rankings={filteredRankings} />
