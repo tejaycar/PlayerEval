@@ -78,8 +78,8 @@ export default function Analysis() {
       const coachIds = exclusionMode === 'include_all' ? [] : excludedCoachIds;
       const ratings = exclusionMode === 'include_all' ? [] : excludedRatings;
       const [data, unfilteredData] = await Promise.all([
-        evaluations.analysis(coachIds, ratings),
-        evaluations.analysis([], []),
+        evaluations.analysis(coachIds, ratings, true),
+        evaluations.analysis([], [], true),
       ]);
       setAnalysis(data);
       setUnfilteredAnalysis(unfilteredData);
