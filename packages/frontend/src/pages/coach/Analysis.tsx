@@ -20,20 +20,25 @@ export default function CoachAnalysis() {
 
   const currentUser = getStoredUser();
 
-  // Load on mount and reload on every tab change (picks up lead's latest exclusions)
+  // Check visibility on mount only
   useEffect(() => {
-    checkVisibilityAndLoad();
-  }, [activeTab]);
+    checkVisibility();
+  }, []);
 
-  const checkVisibilityAndLoad = async () => {
+  // Load data on mount and on every tab change (picks up lead's latest exclusions)
+  useEffect(() => {
+    if (!disabled) {
+      loadData();
+    }
+  }, [activeTab, disabled]);
+
+  const checkVisibility = async () => {
     try {
       const settings = await team.getSettings();
       if (!settings.coachAnalysisVisible) {
         setDisabled(true);
         setLoading(false);
-        return;
       }
-      await loadData();
     } catch (err: any) {
       setError(err.message);
       setLoading(false);

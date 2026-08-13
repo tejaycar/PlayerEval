@@ -30,6 +30,7 @@ export default function Management() {
   };
 
   const handleToggleResults = async () => {
+    setError('');
     const newValue = !coachResultsVisible;
     setCoachResultsVisible(newValue);
     setSaving(true);
@@ -44,6 +45,7 @@ export default function Management() {
   };
 
   const handleToggleAnalysis = async () => {
+    setError('');
     const newValue = !coachAnalysisVisible;
     setCoachAnalysisVisible(newValue);
     setSaving(true);
@@ -58,6 +60,7 @@ export default function Management() {
   };
 
   const handleToggleExclusionMode = async () => {
+    setError('');
     const newMode = exclusionMode === 'exclude_flagged' ? 'include_all' : 'exclude_flagged';
     setExclusionMode(newMode);
     setSaving(true);

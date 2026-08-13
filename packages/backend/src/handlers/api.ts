@@ -715,8 +715,16 @@ export async function handler(event: Event): Promise<Result> {
     return json(200, { evaluations });
   }
 
-  // GET /evaluations/summary - Summary stats for all players (visible to all)
+  // GET /evaluations/summary - Summary stats for all players (visible to all, unless coach results disabled)
   if (method === 'GET' && path === '/evaluations/summary') {
+    // Enforce visibility setting for non-leads
+    if (!isLead) {
+      const teamMeta = await getItem(`TEAM#${teamId}`, 'META');
+      if (teamMeta?.coachResultsVisible === false) {
+        return json(403, { error: 'Results are not currently available' });
+      }
+    }
+
     const items = await queryItems(`TEAM#${teamId}`, 'EVAL#');
     const playerItems = await queryItems(`TEAM#${teamId}`, 'PLAYER#');
 
@@ -785,6 +793,14 @@ export async function handler(event: Event): Promise<Result> {
 
   // POST /evaluations/analysis - Compute normalized analysis (POST to accept excludedCoachIds)
   if (method === 'POST' && path === '/evaluations/analysis') {
+    // Enforce visibility setting for non-leads
+    if (!isLead) {
+      const teamMeta = await getItem(`TEAM#${teamId}`, 'META');
+      if (teamMeta?.coachAnalysisVisible === false) {
+        return json(403, { error: 'Analysis is not currently available' });
+      }
+    }
+
     const body = parseBody(event);
     const excludedCoachIds: string[] = body.excludedCoachIds || [];
     const excludedRatings: Array<{coachId: string; playerId: string}> = body.excludedRatings || [];
