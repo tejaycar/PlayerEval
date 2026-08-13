@@ -790,7 +790,7 @@ export async function handler(event: Event): Promise<Result> {
 
     const analysis = computeAnalysis(evaluationsData, playersData, coachesData, excludedCoachIds, excludedRatings, isLead);
 
-    // Non-leads don't get coach reliability data or raw scores
+    // Non-leads don't get raw scores or other coaches' detailed reliability data
     if (!isLead) {
       analysis.playerImpactWarnings = [];
       // Strip raw scores — coaches should only see normalized values
@@ -799,6 +799,24 @@ export async function handler(event: Event): Promise<Result> {
         rawTotal: 0,
         rawCategories: { attitude: 0, effort: 0, footballIQ: 0, generalSkill: 0, positionSkill: 0 },
       }));
+      // Coaches only get detailed reliability data for themselves; others get summary only
+      analysis.coachReliability = analysis.coachReliability.map((cr) => {
+        if (cr.coachId === coachId) {
+          // Requesting coach gets their own full detail
+          return cr;
+        }
+        // Other coaches: strip playerDeviations (detail) and return summary only
+        return {
+          coachId: cr.coachId,
+          coachName: cr.coachName,
+          playersRated: cr.playersRated,
+          madFromMedian: cr.madFromMedian,
+          meanDeviationFromMean: cr.meanDeviationFromMean,
+          rankCorrelation: cr.rankCorrelation,
+          isExcluded: cr.isExcluded,
+          playerDeviations: [],
+        };
+      });
     }
 
     return json(200, analysis);
