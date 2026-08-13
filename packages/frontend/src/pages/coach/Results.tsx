@@ -2,7 +2,10 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { evaluations, team } from '../../api';
 import type { NormalizedPlayerScore, RatingCategory } from '@player-eval/shared';
 
-type SortField = 'normalizedTotal' | 'attitude' | 'effort' | 'footballIQ' | 'generalSkill' | 'positionSkill';
+/** Format number to at most 2 decimal places, no trailing zeros */
+const fmt = (n: number) => +n.toFixed(2);
+
+type SortField = 'normalizedTotal' | 'medianTotal' | 'attitude' | 'effort' | 'footballIQ' | 'generalSkill' | 'positionSkill';
 
 export default function Results() {
   const [rankings, setRankings] = useState<NormalizedPlayerScore[]>([]);
@@ -85,6 +88,9 @@ export default function Results() {
     if (sortBy === 'normalizedTotal') {
       aVal = a.normalizedTotal;
       bVal = b.normalizedTotal;
+    } else if (sortBy === 'medianTotal') {
+      aVal = a.medianTotal;
+      bVal = b.medianTotal;
     } else {
       aVal = a.categories[sortBy];
       bVal = b.categories[sortBy];
@@ -161,7 +167,8 @@ export default function Results() {
                 <SortHeader field="footballIQ" label="Football IQ" />
                 <SortHeader field="generalSkill" label="General" />
                 <SortHeader field="positionSkill" label="Position" />
-                <SortHeader field="normalizedTotal" label="Total" />
+                <SortHeader field="normalizedTotal" label="Mean" />
+                <SortHeader field="medianTotal" label="Median" />
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
@@ -173,12 +180,13 @@ export default function Results() {
                   <td className="px-3 py-2 text-gray-500">{player.primaryPosition || '--'}</td>
                   <td className="px-3 py-2 text-gray-500">{player.secondaryPosition || '--'}</td>
                   <td className="px-3 py-2 text-center text-gray-500">{player.evaluationCount}</td>
-                  <td className="px-3 py-2 text-center">{player.categories.attitude}</td>
-                  <td className="px-3 py-2 text-center">{player.categories.effort}</td>
-                  <td className="px-3 py-2 text-center">{player.categories.footballIQ}</td>
-                  <td className="px-3 py-2 text-center">{player.categories.generalSkill}</td>
-                  <td className="px-3 py-2 text-center">{player.categories.positionSkill}</td>
-                  <td className="px-3 py-2 text-center font-bold text-blue-700">{player.normalizedTotal}</td>
+                  <td className="px-3 py-2 text-center">{fmt(player.categories.attitude)}</td>
+                  <td className="px-3 py-2 text-center">{fmt(player.categories.effort)}</td>
+                  <td className="px-3 py-2 text-center">{fmt(player.categories.footballIQ)}</td>
+                  <td className="px-3 py-2 text-center">{fmt(player.categories.generalSkill)}</td>
+                  <td className="px-3 py-2 text-center">{fmt(player.categories.positionSkill)}</td>
+                  <td className="px-3 py-2 text-center font-bold text-blue-700">{fmt(player.normalizedTotal)}</td>
+                  <td className="px-3 py-2 text-center font-medium text-blue-600">{fmt(player.medianTotal)}</td>
                 </tr>
               ))}
             </tbody>

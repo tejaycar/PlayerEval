@@ -1,8 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { evaluations, players as playersApi, coaches as coachesApi, team } from '../../api';
 import type { NormalizedPlayerScore, ExcludedRating } from '@player-eval/shared';
 import { RATING_LABELS } from './ratingLabels';
+
+/** Format number to at most 2 decimal places, no trailing zeros */
+const fmt = (n: number) => +n.toFixed(2);
 
 interface NormalizedIndividualEval {
   coachId: string;
@@ -46,6 +49,20 @@ export default function PlayerSummary() {
   const [excludedRatings, setExcludedRatings] = useState<ExcludedRating[]>([]);
   const [allNormalized, setAllNormalized] = useState<NormalizedPlayerScore[]>([]);
   const [exclusionMode, setExclusionMode] = useState<'include_all' | 'exclude_flagged'>('exclude_flagged');
+
+  // Sort state for the evaluations table
+  type SortField = 'coachName' | 'attitude' | 'effort' | 'footballIQ' | 'generalSkill' | 'positionSkill' | 'totalScore';
+  const [sortBy, setSortBy] = useState<SortField>('coachName');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
+
+  const handleSort = (field: SortField) => {
+    if (sortBy === field) {
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortBy(field);
+      setSortDir(field === 'coachName' ? 'asc' : 'desc');
+    }
+  };
 
   useEffect(() => {
     loadPlayers();
@@ -180,12 +197,55 @@ export default function PlayerSummary() {
     };
   };
 
+  const medianOf = (arr: number[]) => {
+    if (arr.length === 0) return 0;
+    const sorted = [...arr].sort((a, b) => a - b);
+    const mid = Math.floor(sorted.length / 2);
+    return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
+  };
+
+  const calculateNormalizedMedians = () => {
+    const included = normalizedEvals.filter((ev) => !isRowExcluded(ev));
+    if (included.length === 0) return null;
+    return {
+      attitude: fmt(medianOf(included.map((e) => e.normalized.attitude))),
+      effort: fmt(medianOf(included.map((e) => e.normalized.effort))),
+      footballIQ: fmt(medianOf(included.map((e) => e.normalized.footballIQ))),
+      generalSkill: fmt(medianOf(included.map((e) => e.normalized.generalSkill))),
+      positionSkill: fmt(medianOf(included.map((e) => e.normalized.positionSkill))),
+      totalScore: fmt(medianOf(included.map((e) => e.normalized.totalScore))),
+    };
+  };
+
   if (loading) return <div className="text-center py-8">Loading...</div>;
 
   const normalizedAverages = calculateNormalizedAverages();
   const rawAverages = calculateRawAverages();
   const selectedPlayerData = playerList.find((p) => p.id === selectedPlayer);
   const playerNormalized = allNormalized.find((p) => p.playerId === selectedPlayer);
+
+  // Sort evaluations
+  const sortedEvals = [...normalizedEvals].sort((a, b) => {
+    const useRaw = showRaw; // when showRaw toggle is on, we might want to sort by shown values
+    let cmp: number;
+    if (sortBy === 'coachName') {
+      const nameA = getCoachDisplayName(a.coachId, a.coachName);
+      const nameB = getCoachDisplayName(b.coachId, b.coachName);
+      cmp = nameA.localeCompare(nameB);
+    } else {
+      cmp = a.normalized[sortBy] - b.normalized[sortBy];
+    }
+    return sortDir === 'asc' ? cmp : -cmp;
+  });
+
+  const SortHeader = ({ field, label }: { field: SortField; label: string }) => (
+    <th
+      className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase cursor-pointer hover:text-gray-700"
+      onClick={() => handleSort(field)}
+    >
+      {label} {sortBy === field && (sortDir === 'asc' ? '↑' : '↓')}
+    </th>
+  );
 
   return (
     <div>
@@ -274,17 +334,22 @@ export default function PlayerSummary() {
               <table className="w-full bg-white rounded-lg shadow-sm border text-sm">
                 <thead className="bg-gray-50">
                   <tr>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Evaluator</th>
-                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Attitude</th>
-                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Effort</th>
-                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Football IQ</th>
-                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">General Skill</th>
-                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Position Skill</th>
-                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase font-bold">Total</th>
+                    <th
+                      className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:text-gray-700"
+                      onClick={() => handleSort('coachName')}
+                    >
+                      Evaluator {sortBy === 'coachName' && (sortDir === 'asc' ? '↑' : '↓')}
+                    </th>
+                    <SortHeader field="attitude" label="Attitude" />
+                    <SortHeader field="effort" label="Effort" />
+                    <SortHeader field="footballIQ" label="Football IQ" />
+                    <SortHeader field="generalSkill" label="General Skill" />
+                    <SortHeader field="positionSkill" label="Position Skill" />
+                    <SortHeader field="totalScore" label="Total" />
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
-                  {normalizedEvals.map((ev, i) => {
+                  {sortedEvals.map((ev, i) => {
                     const excluded = isRowExcluded(ev);
                     return (
                       <React.Fragment key={i}>
@@ -296,12 +361,12 @@ export default function PlayerSummary() {
                               <span className="ml-2 text-xs text-red-400 italic">(excluded)</span>
                             )}
                           </td>
-                          <td className={`px-4 py-2 text-center ${excluded ? 'text-red-400' : ''}`}>{ev.normalized.attitude}</td>
-                          <td className={`px-4 py-2 text-center ${excluded ? 'text-red-400' : ''}`}>{ev.normalized.effort}</td>
-                          <td className={`px-4 py-2 text-center ${excluded ? 'text-red-400' : ''}`}>{ev.normalized.footballIQ}</td>
-                          <td className={`px-4 py-2 text-center ${excluded ? 'text-red-400' : ''}`}>{ev.normalized.generalSkill}</td>
-                          <td className={`px-4 py-2 text-center ${excluded ? 'text-red-400' : ''}`}>{ev.normalized.positionSkill}</td>
-                          <td className={`px-4 py-2 text-center font-bold ${excluded ? 'text-red-400' : ''}`}>{ev.normalized.totalScore}</td>
+                          <td className={`px-4 py-2 text-center ${excluded ? 'text-red-400' : ''}`}>{fmt(ev.normalized.attitude)}</td>
+                          <td className={`px-4 py-2 text-center ${excluded ? 'text-red-400' : ''}`}>{fmt(ev.normalized.effort)}</td>
+                          <td className={`px-4 py-2 text-center ${excluded ? 'text-red-400' : ''}`}>{fmt(ev.normalized.footballIQ)}</td>
+                          <td className={`px-4 py-2 text-center ${excluded ? 'text-red-400' : ''}`}>{fmt(ev.normalized.generalSkill)}</td>
+                          <td className={`px-4 py-2 text-center ${excluded ? 'text-red-400' : ''}`}>{fmt(ev.normalized.positionSkill)}</td>
+                          <td className={`px-4 py-2 text-center font-bold ${excluded ? 'text-red-400' : ''}`}>{fmt(ev.normalized.totalScore)}</td>
                         </tr>
                         {/* Raw sub-row (toggled) */}
                         {showRaw && (
@@ -321,25 +386,40 @@ export default function PlayerSummary() {
                   {/* Normalized Average row */}
                   {normalizedAverages && (
                     <tr className="bg-green-50 font-semibold border-t-2 border-gray-300">
-                      <td className="px-4 py-3">Normalized Average</td>
-                      <td className="px-4 py-3 text-center">{normalizedAverages.attitude}</td>
-                      <td className="px-4 py-3 text-center">{normalizedAverages.effort}</td>
-                      <td className="px-4 py-3 text-center">{normalizedAverages.footballIQ}</td>
-                      <td className="px-4 py-3 text-center">{normalizedAverages.generalSkill}</td>
-                      <td className="px-4 py-3 text-center">{normalizedAverages.positionSkill}</td>
-                      <td className="px-4 py-3 text-center font-bold text-green-700">{normalizedAverages.totalScore}</td>
+                      <td className="px-4 py-3">Normalized Mean</td>
+                      <td className="px-4 py-3 text-center">{fmt(normalizedAverages.attitude)}</td>
+                      <td className="px-4 py-3 text-center">{fmt(normalizedAverages.effort)}</td>
+                      <td className="px-4 py-3 text-center">{fmt(normalizedAverages.footballIQ)}</td>
+                      <td className="px-4 py-3 text-center">{fmt(normalizedAverages.generalSkill)}</td>
+                      <td className="px-4 py-3 text-center">{fmt(normalizedAverages.positionSkill)}</td>
+                      <td className="px-4 py-3 text-center font-bold text-green-700">{fmt(normalizedAverages.totalScore)}</td>
                     </tr>
                   )}
+                  {/* Normalized Median row */}
+                  {calculateNormalizedMedians() && (() => {
+                    const medians = calculateNormalizedMedians()!;
+                    return (
+                      <tr className="bg-green-50 font-semibold">
+                        <td className="px-4 py-3">Normalized Median</td>
+                        <td className="px-4 py-3 text-center">{medians.attitude}</td>
+                        <td className="px-4 py-3 text-center">{medians.effort}</td>
+                        <td className="px-4 py-3 text-center">{medians.footballIQ}</td>
+                        <td className="px-4 py-3 text-center">{medians.generalSkill}</td>
+                        <td className="px-4 py-3 text-center">{medians.positionSkill}</td>
+                        <td className="px-4 py-3 text-center font-bold text-green-600">{medians.totalScore}</td>
+                      </tr>
+                    );
+                  })()}
                   {/* Raw Average row (toggled) */}
                   {showRaw && rawAverages && (
                     <tr className="bg-blue-50 font-semibold">
                       <td className="px-4 py-3">Raw Average</td>
-                      <td className="px-4 py-3 text-center">{rawAverages.attitude}</td>
-                      <td className="px-4 py-3 text-center">{rawAverages.effort}</td>
-                      <td className="px-4 py-3 text-center">{rawAverages.footballIQ}</td>
-                      <td className="px-4 py-3 text-center">{rawAverages.generalSkill}</td>
-                      <td className="px-4 py-3 text-center">{rawAverages.positionSkill}</td>
-                      <td className="px-4 py-3 text-center font-bold">{rawAverages.totalScore}</td>
+                      <td className="px-4 py-3 text-center">{fmt(rawAverages.attitude)}</td>
+                      <td className="px-4 py-3 text-center">{fmt(rawAverages.effort)}</td>
+                      <td className="px-4 py-3 text-center">{fmt(rawAverages.footballIQ)}</td>
+                      <td className="px-4 py-3 text-center">{fmt(rawAverages.generalSkill)}</td>
+                      <td className="px-4 py-3 text-center">{fmt(rawAverages.positionSkill)}</td>
+                      <td className="px-4 py-3 text-center font-bold">{fmt(rawAverages.totalScore)}</td>
                     </tr>
                   )}
                 </tbody>
