@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
-import { getStoredUser, clearToken, clearStoredUser, isVersionMismatch, onVersionMismatch } from '../api';
+import { getStoredUser, clearToken, clearStoredUser, isVersionMismatch, onVersionMismatch, team } from '../api';
 
 function VersionBanner() {
   const [show, setShow] = useState(isVersionMismatch());
@@ -32,6 +32,20 @@ export default function Layout() {
   const user = getStoredUser();
   const isLeadView = location.pathname.startsWith('/lead');
   const isLead = user?.isLead || false;
+
+  const [coachResultsVisible, setCoachResultsVisible] = useState(true);
+  const [coachAnalysisVisible, setCoachAnalysisVisible] = useState(true);
+
+  useEffect(() => {
+    if (!isLeadView) {
+      team.getSettings().then((data) => {
+        setCoachResultsVisible(data.coachResultsVisible);
+        setCoachAnalysisVisible(data.coachAnalysisVisible);
+      }).catch(() => {
+        // Default to visible on error
+      });
+    }
+  }, [isLeadView]);
 
   const handleLogout = () => {
     clearToken();
@@ -86,12 +100,17 @@ export default function Layout() {
               <NavLink to="/lead/assignments" current={location.pathname}>Assignments</NavLink>
               <NavLink to="/lead/player-summary" current={location.pathname}>Player Summary</NavLink>
               <NavLink to="/lead/analysis" current={location.pathname}>Analysis</NavLink>
+              <NavLink to="/lead/management" current={location.pathname}>Management</NavLink>
             </>
           ) : (
             <>
               <NavLink to="/coach/rate" current={location.pathname}>Rate Players</NavLink>
-              <NavLink to="/coach/results" current={location.pathname}>Results</NavLink>
-              <NavLink to="/coach/analysis" current={location.pathname}>Analysis</NavLink>
+              {coachResultsVisible && (
+                <NavLink to="/coach/results" current={location.pathname}>Results</NavLink>
+              )}
+              {coachAnalysisVisible && (
+                <NavLink to="/coach/analysis" current={location.pathname}>Analysis</NavLink>
+              )}
             </>
           )}
         </div>

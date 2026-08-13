@@ -231,6 +231,31 @@ export async function handler(event: Event): Promise<Result> {
     return json(200, { exclusionMode: mode });
   }
 
+  // GET /team/settings - Get coach visibility settings (accessible to all authenticated users)
+  if (method === 'GET' && path === '/team/settings') {
+    const teamMeta = await getItem(`TEAM#${teamId}`, 'META');
+    return json(200, {
+      coachResultsVisible: teamMeta?.coachResultsVisible !== false,
+      coachAnalysisVisible: teamMeta?.coachAnalysisVisible !== false,
+    });
+  }
+
+  // PUT /team/settings - Update coach visibility settings (lead only)
+  if (method === 'PUT' && path === '/team/settings') {
+    if (!isLead) return json(403, { error: 'Only leads can manage team settings' });
+    const body = parseBody(event);
+    const updates: Record<string, any> = {};
+    if (typeof body.coachResultsVisible === 'boolean') updates.coachResultsVisible = body.coachResultsVisible;
+    if (typeof body.coachAnalysisVisible === 'boolean') updates.coachAnalysisVisible = body.coachAnalysisVisible;
+    if (Object.keys(updates).length === 0) return json(400, { error: 'At least one boolean setting (coachResultsVisible, coachAnalysisVisible) is required' });
+    await updateItem(`TEAM#${teamId}`, 'META', updates);
+    const teamMeta = await getItem(`TEAM#${teamId}`, 'META');
+    return json(200, {
+      coachResultsVisible: teamMeta?.coachResultsVisible !== false,
+      coachAnalysisVisible: teamMeta?.coachAnalysisVisible !== false,
+    });
+  }
+
   // GET /team/excluded-ratings - Get persisted excluded ratings
   // NOTE: Intentionally accessible to all authenticated team members (not just leads).
   // The coach view always applies the lead's saved exclusions to produce consistent
