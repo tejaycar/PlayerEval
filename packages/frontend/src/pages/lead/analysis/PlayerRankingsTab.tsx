@@ -1,6 +1,9 @@
 import React, { useState } from 'react';
 import type { NormalizedPlayerScore } from '@player-eval/shared';
 
+/** Format number to at most 2 decimal places, no trailing zeros */
+const fmt = (n: number) => +n.toFixed(2);
+
 interface Props {
   rankings: NormalizedPlayerScore[];
 }
@@ -33,7 +36,7 @@ function ReliabilityBadge({ sem, ci95, n }: { sem: number; ci95: number; n: numb
   return (
     <span
       className={`inline-block px-1.5 py-0.5 text-xs rounded ${color} cursor-help`}
-      title={`SEM: ${sem} · 95% CI: ±${ci95} · n=${n}\nSmaller CI = more reliable rating`}
+      title={`SEM: ${fmt(sem)} · 95% CI: ±${fmt(ci95)} · n=${n}\nSmaller CI = more reliable rating`}
     >
       {label}
     </span>
@@ -130,15 +133,15 @@ export default function PlayerRankingsTab({ rankings }: Props) {
               <td className="px-3 py-2 text-gray-500">{player.primaryPosition || '--'}</td>
               <td className="px-3 py-2 text-gray-500">{player.secondaryPosition || '--'}</td>
               <td className="px-3 py-2 text-center text-gray-500">{player.evaluationCount}</td>
-              <td className="px-3 py-2 text-center">{player.categories.attitude}</td>
-              <td className="px-3 py-2 text-center">{player.categories.effort}</td>
-              <td className="px-3 py-2 text-center">{player.categories.footballIQ}</td>
-              <td className="px-3 py-2 text-center">{player.categories.generalSkill}</td>
-              <td className="px-3 py-2 text-center">{player.categories.positionSkill}</td>
-              <td className="px-3 py-2 text-center text-gray-500">{player.rawTotal}</td>
-              <td className="px-3 py-2 text-center font-bold text-blue-700">{player.normalizedTotal}</td>
-              <td className="px-3 py-2 text-center font-medium text-blue-600">{player.medianTotal}</td>
-              <td className="px-3 py-2 text-center text-gray-500 text-xs">±{player.ci95}</td>
+              <td className="px-3 py-2 text-center">{fmt(player.categories.attitude)}</td>
+              <td className="px-3 py-2 text-center">{fmt(player.categories.effort)}</td>
+              <td className="px-3 py-2 text-center">{fmt(player.categories.footballIQ)}</td>
+              <td className="px-3 py-2 text-center">{fmt(player.categories.generalSkill)}</td>
+              <td className="px-3 py-2 text-center">{fmt(player.categories.positionSkill)}</td>
+              <td className="px-3 py-2 text-center text-gray-500">{fmt(player.rawTotal)}</td>
+              <td className="px-3 py-2 text-center font-bold text-blue-700">{fmt(player.normalizedTotal)}</td>
+              <td className="px-3 py-2 text-center font-medium text-blue-600">{fmt(player.medianTotal)}</td>
+              <td className="px-3 py-2 text-center text-gray-500 text-xs">±{fmt(player.ci95)}</td>
               <td className="px-3 py-2 text-center">
                 <ReliabilityBadge sem={player.sem} ci95={player.ci95} n={player.evaluationCount} />
               </td>

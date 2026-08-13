@@ -1,6 +1,9 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import type { BoxPlotStats } from '@player-eval/shared';
 
+/** Format number to at most 2 decimal places, no trailing zeros */
+const fmt = (n: number) => +n.toFixed(2);
+
 interface Props {
   boxPlots: BoxPlotStats[];
 }
@@ -311,14 +314,14 @@ export default function PlayerBoxPlotsTab({ boxPlots }: Props) {
 
             {/* Stats */}
             <div className="w-64 text-xs text-gray-500 flex-shrink-0">
-              Mean: {bp.mean}
+              Mean: {fmt(bp.mean)}
               <span className="text-gray-400 text-xs ml-0.5 cursor-help" title="Average of all normalized scores for this player across coaches.">&#9432;</span>
-              {' · '}Med: {bp.median}
+              {' · '}Med: {fmt(bp.median)}
               <span className="text-gray-400 text-xs ml-0.5 cursor-help" title="Median normalized score — the middle value. More robust to outliers than the mean.">&#9432;</span>
-              {' · '}IQR: {bp.iqr}
+              {' · '}IQR: {fmt(bp.iqr)}
               <span className="text-gray-400 text-xs ml-0.5 cursor-help" title="Interquartile range — how spread out the middle 50% of scores are. Higher = more disagreement between coaches.">&#9432;</span>
-              <span className="ml-2 text-gray-400">±{bp.ci95}</span>
-              <span className="text-gray-400 text-xs ml-0.5 cursor-help" title={`95% confidence interval (n=${bp.n}, SEM=${bp.sem}). The true mean score is likely within ±${bp.ci95} of the displayed mean.`}>&#9432;</span>
+              <span className="ml-2 text-gray-400">±{fmt(bp.ci95)}</span>
+              <span className="text-gray-400 text-xs ml-0.5 cursor-help" title={`95% confidence interval (n=${bp.n}, SEM=${fmt(bp.sem)}). The true mean score is likely within ±${fmt(bp.ci95)} of the displayed mean.`}>&#9432;</span>
             </div>
           </div>
         ))}

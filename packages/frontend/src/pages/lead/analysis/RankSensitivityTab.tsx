@@ -401,7 +401,7 @@ export default function RankSensitivityTab({
                       <td className="px-3 py-2 text-gray-400">{player.rank}</td>
                       <td className="px-3 py-2 text-gray-500">{player.playerNumber}</td>
                       <td className="px-3 py-2 font-medium">{player.playerName}</td>
-                      <td className="px-3 py-2 text-center font-bold text-blue-700">{player.normalizedTotal}</td>
+                      <td className="px-3 py-2 text-center font-bold text-blue-700">{player.normalizedTotal.toFixed(2)}</td>
                       <td className="px-3 py-2 text-center">
                         {bp && bp.outliers.length > 0 ? (
                           <span className="text-red-500 text-xs">{bp.outliers.length} outlier{bp.outliers.length > 1 ? 's' : ''}</span>
@@ -432,7 +432,7 @@ export default function RankSensitivityTab({
                     <td className="px-3 py-2 text-gray-400">{player.rank}</td>
                     <td className="px-3 py-2 text-gray-500">{player.playerNumber}</td>
                     <td className="px-3 py-2 font-medium">{player.playerName}</td>
-                    <td className="px-3 py-2 text-center font-bold text-blue-700">{player.normalizedTotal}</td>
+                    <td className="px-3 py-2 text-center font-bold text-blue-700">{player.normalizedTotal.toFixed(2)}</td>
                     <td className="px-3 py-2 text-center text-xs text-gray-500">
                       {player.originalN} → {player.trimmedN}
                       {player.outlierCount > 0 && (
