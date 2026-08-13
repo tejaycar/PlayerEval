@@ -4,6 +4,7 @@ import { putItem, getItem, queryItems, deleteItem, batchPutItems, updateItem, sc
 import { authenticateRequest, issueJWT, generatePin, verifyPin } from '../auth';
 import { computeAssignments } from '../assignment';
 import { computeAnalysis, computePlayerNormalizedEvals } from '../analysis';
+import { computeIntegrityAnalysis } from '../integrity';
 import type { Player, Coach, Evaluation, JWTPayload } from '@player-eval/shared';
 
 type Event = APIGatewayProxyEventV2;
@@ -815,6 +816,56 @@ export async function handler(event: Event): Promise<Result> {
     history.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
 
     return json(200, { history });
+  }
+
+  // POST /evaluations/integrity - Compute integrity analysis (lead only)
+  if (method === 'POST' && path === '/evaluations/integrity') {
+    if (!isLead) return json(403, { error: 'Only leads can view integrity analysis' });
+
+    const historyItems = await queryItems(`TEAM#${teamId}`, 'HISTORY#');
+    const evalItems = await queryItems(`TEAM#${teamId}`, 'EVAL#');
+    const playerItems = await queryItems(`TEAM#${teamId}`, 'PLAYER#');
+    const coachItems = await queryItems(`TEAM#${teamId}`, 'COACH#');
+
+    const history = historyItems.map((item) => ({
+      id: item.id,
+      teamId: item.teamId,
+      coachId: item.coachId,
+      playerId: item.playerId,
+      attitude: item.attitude,
+      effort: item.effort,
+      footballIQ: item.footballIQ,
+      generalSkill: item.generalSkill,
+      positionSkill: item.positionSkill,
+      totalScore: item.totalScore,
+      timestamp: item.timestamp,
+      previousScores: item.previousScores || null,
+    }));
+
+    const evaluationsData = evalItems.map((item) => ({
+      coachId: item.coachId,
+      playerId: item.playerId,
+      attitude: item.attitude,
+      effort: item.effort,
+      footballIQ: item.footballIQ,
+      generalSkill: item.generalSkill,
+      positionSkill: item.positionSkill,
+      totalScore: item.totalScore,
+    }));
+
+    const playersData = playerItems.map((p) => ({
+      id: p.id,
+      name: p.name,
+      number: p.number || '',
+    }));
+
+    const coachesData = coachItems.map((c) => ({
+      id: c.id,
+      name: c.name,
+    }));
+
+    const result = computeIntegrityAnalysis(history, evaluationsData, coachesData, playersData);
+    return json(200, result);
   }
 
   // POST /evaluations/analysis - Compute normalized analysis (POST to accept excludedCoachIds)
