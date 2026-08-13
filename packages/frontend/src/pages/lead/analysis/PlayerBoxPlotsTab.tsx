@@ -227,6 +227,13 @@ export default function PlayerBoxPlotsTab({ boxPlots }: Props) {
         )}
       </div>
 
+      <div className="flex items-center gap-4 text-xs text-gray-400 mb-3">
+        <span className="flex items-center gap-1"><span className="inline-block w-3 h-0.5 bg-blue-700"></span> Median</span>
+        <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 bg-green-600 rotate-45"></span> Mean</span>
+        <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 bg-blue-200 border border-blue-400 rounded-sm"></span> IQR (Q1–Q3)</span>
+        <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 bg-red-500 rounded-full"></span> Outlier</span>
+      </div>
+
       <div className="space-y-2">
         {sorted.map((bp) => (
           <div key={bp.playerId} className="flex items-center gap-3">
@@ -279,6 +286,14 @@ export default function PlayerBoxPlotsTab({ boxPlots }: Props) {
                 style={{
                   left: `${toPercent(bp.median)}%`,
                   transform: 'translate(-50%, -50%)',
+                }}
+              />
+              {/* Mean marker (diamond) */}
+              <div
+                className="absolute top-1/2 w-2 h-2 bg-green-600 rotate-45"
+                style={{
+                  left: `${toPercent(bp.mean)}%`,
+                  transform: 'translate(-50%, -50%) rotate(45deg)',
                 }}
               />
               {/* Outliers */}
