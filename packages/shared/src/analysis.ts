@@ -22,7 +22,9 @@ export interface NormalizedPlayerScore {
   secondaryPosition: string;
   evaluationCount: number; // how many coaches rated this player (after exclusions)
   rawTotal: number; // average raw total across coaches
-  normalizedTotal: number; // Z-score normalized total, rescaled
+  normalizedTotal: number; // Z-score normalized total, rescaled (mean of normalized scores)
+  /** Median of normalized scores across coaches */
+  medianTotal: number;
   categories: Record<RatingCategory, number>; // normalized category scores (rescaled)
   rawCategories: Record<RatingCategory, number>; // raw average category scores
   /** Standard Error of the Mean: stddev / sqrt(n) — how much the average might wobble */
@@ -44,6 +46,7 @@ export interface BoxPlotStats {
   min: number;
   q1: number;
   median: number;
+  mean: number;
   q3: number;
   max: number;
   iqr: number;

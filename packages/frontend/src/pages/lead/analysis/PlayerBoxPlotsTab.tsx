@@ -295,11 +295,15 @@ export default function PlayerBoxPlotsTab({ boxPlots }: Props) {
             </div>
 
             {/* Stats */}
-            <div className="w-56 text-xs text-gray-500 flex-shrink-0">
-              Med: {bp.median} · IQR: {bp.iqr}
-              <span className="text-gray-400 text-xs ml-1 cursor-help" title="Interquartile range -- how spread out the middle 50% of scores are. Higher = more disagreement between coaches.">&#9432;</span>
+            <div className="w-64 text-xs text-gray-500 flex-shrink-0">
+              Mean: {bp.mean}
+              <span className="text-gray-400 text-xs ml-0.5 cursor-help" title="Average of all normalized scores for this player across coaches.">&#9432;</span>
+              {' · '}Med: {bp.median}
+              <span className="text-gray-400 text-xs ml-0.5 cursor-help" title="Median normalized score — the middle value. More robust to outliers than the mean.">&#9432;</span>
+              {' · '}IQR: {bp.iqr}
+              <span className="text-gray-400 text-xs ml-0.5 cursor-help" title="Interquartile range — how spread out the middle 50% of scores are. Higher = more disagreement between coaches.">&#9432;</span>
               <span className="ml-2 text-gray-400">±{bp.ci95}</span>
-              <span className="text-gray-400 text-xs ml-1 cursor-help" title={`95% confidence interval (n=${bp.n}, SEM=${bp.sem}). The true mean score is likely within ±${bp.ci95} of the displayed median.`}>&#9432;</span>
+              <span className="text-gray-400 text-xs ml-0.5 cursor-help" title={`95% confidence interval (n=${bp.n}, SEM=${bp.sem}). The true mean score is likely within ±${bp.ci95} of the displayed mean.`}>&#9432;</span>
             </div>
           </div>
         ))}

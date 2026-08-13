@@ -373,6 +373,7 @@ export function computeAnalysis(
 
     const normalizedTotals = playerNormEvals.map((e) => e.normalizedTotal);
     const avgNormalizedTotal = mean(normalizedTotals);
+    const medNormalizedTotal = median(normalizedTotals);
     const sdNormalizedTotal = stddev(normalizedTotals);
     const n = playerNormEvals.length;
     const semValue = n > 1 ? sdNormalizedTotal / Math.sqrt(n) : 0;
@@ -400,6 +401,7 @@ export function computeAnalysis(
       evaluationCount: n,
       rawTotal: mean(rawPlayerEvals.map((e) => e.totalScore)),
       normalizedTotal: round2(avgNormalizedTotal),
+      medianTotal: round2(medNormalizedTotal),
       categories: roundRecord(normalizedCategoryAverages) as Record<RatingCategory, number>,
       rawCategories: roundRecord(rawCategories) as Record<RatingCategory, number>,
       sem: round2(semValue),
@@ -422,6 +424,7 @@ export function computeAnalysis(
       min: Math.min(...normalizedTotals),
       q1: round2(q.q1),
       median: round2(q.median),
+      mean: round2(avgNormalizedTotal),
       q3: round2(q.q3),
       max: Math.max(...normalizedTotals),
       iqr: round2(iqr),

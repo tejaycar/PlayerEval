@@ -243,8 +243,14 @@ export default function RankSensitivityTab({
                   Rank Correlation
                   <span className="text-gray-400 text-xs ml-1 cursor-help" title="Spearman correlation between base rankings and rankings without this coach. 1.0 = no change, lower = more influence.">ⓘ</span>
                 </th>
-                <th className="px-3 py-2 text-center text-xs font-medium text-gray-500">Avg Shift</th>
-                <th className="px-3 py-2 text-center text-xs font-medium text-gray-500">Max Shift</th>
+                <th className="px-3 py-2 text-center text-xs font-medium text-gray-500">
+                  Avg Shift
+                  <span className="text-gray-400 text-xs ml-1 cursor-help" title="Average number of rank positions players move when this coach is removed. Higher = this coach's ratings create more movement.">ⓘ</span>
+                </th>
+                <th className="px-3 py-2 text-center text-xs font-medium text-gray-500">
+                  Max Shift
+                  <span className="text-gray-400 text-xs ml-1 cursor-help" title="Largest rank change for any single player when this coach is removed. A high number means at least one player's position depends heavily on this coach.">ⓘ</span>
+                </th>
                 <th className="px-3 py-2 text-center text-xs font-medium text-gray-500">Impact</th>
               </tr>
             </thead>
