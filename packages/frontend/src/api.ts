@@ -93,6 +93,12 @@ async function request(method: string, path: string, body?: any): Promise<any> {
     throw new Error('Unauthorized');
   }
 
+  // Guard against CloudFront rewriting error responses to HTML (e.g. 403 → index.html)
+  const contentType = res.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    throw new Error('Request failed — server returned an unexpected response');
+  }
+
   const data = await res.json();
   if (!res.ok) {
     throw new Error(data.error || 'Request failed');
