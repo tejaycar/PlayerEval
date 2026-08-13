@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import type { BoxPlotStats } from '@player-eval/shared';
 
 interface Props {
@@ -10,6 +10,21 @@ type SortField = 'iqr' | 'median' | 'name';
 export default function PlayerBoxPlotsTab({ boxPlots }: Props) {
   const [sortBy, setSortBy] = useState<SortField>('iqr');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+  const [selectedPlayerIds, setSelectedPlayerIds] = useState<Set<string>>(new Set());
+  const [playerPickerOpen, setPlayerPickerOpen] = useState(false);
+  const [pickerSearch, setPickerSearch] = useState('');
+  const pickerRef = useRef<HTMLDivElement>(null);
+
+  // Close picker when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (pickerRef.current && !pickerRef.current.contains(e.target as Node)) {
+        setPlayerPickerOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const handleSort = (field: SortField) => {
     if (sortBy === field) {
@@ -20,7 +35,39 @@ export default function PlayerBoxPlotsTab({ boxPlots }: Props) {
     }
   };
 
-  const sorted = [...boxPlots].sort((a, b) => {
+  const togglePlayer = (playerId: string) => {
+    setSelectedPlayerIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(playerId)) {
+        next.delete(playerId);
+      } else {
+        next.add(playerId);
+      }
+      return next;
+    });
+  };
+
+  const clearSelection = () => setSelectedPlayerIds(new Set());
+
+  // Filter box plots by selected players (if any selected)
+  const displayedBoxPlots = useMemo(() => {
+    if (selectedPlayerIds.size === 0) return boxPlots;
+    return boxPlots.filter((bp) => selectedPlayerIds.has(bp.playerId));
+  }, [boxPlots, selectedPlayerIds]);
+
+  // Filter player list in picker by search term
+  const pickerPlayers = useMemo(() => {
+    const lower = pickerSearch.toLowerCase();
+    const all = [...boxPlots].sort((a, b) => a.playerName.localeCompare(b.playerName));
+    if (!pickerSearch) return all;
+    return all.filter(
+      (bp) =>
+        bp.playerName.toLowerCase().includes(lower) ||
+        bp.playerNumber.includes(pickerSearch)
+    );
+  }, [boxPlots, pickerSearch]);
+
+  const sorted = [...displayedBoxPlots].sort((a, b) => {
     let cmp: number;
     if (sortBy === 'name') {
       cmp = a.playerName.localeCompare(b.playerName);
@@ -37,7 +84,7 @@ export default function PlayerBoxPlotsTab({ boxPlots }: Props) {
   }
 
 
-  // Compute global min/max for consistent scale
+  // Always use full boxPlots set for consistent scale across comparisons
   const globalMin = Math.min(...boxPlots.map((b) => b.min));
   const globalMax = Math.max(...boxPlots.map((b) => b.max));
   const range = globalMax - globalMin || 1;
@@ -46,30 +93,138 @@ export default function PlayerBoxPlotsTab({ boxPlots }: Props) {
 
   return (
     <div>
-      <div className="flex gap-4 mb-4 text-sm">
-        <button
-          onClick={() => handleSort('iqr')}
-          className={`px-3 py-1 rounded border ${sortBy === 'iqr' ? 'bg-blue-100 border-blue-300' : 'border-gray-300'}`}
-        >
-          Sort by Controversy (IQR) {sortBy === 'iqr' && (sortDir === 'desc' ? '↓' : '↑')}
-        </button>
-        <button
-          onClick={() => handleSort('median')}
-          className={`px-3 py-1 rounded border ${sortBy === 'median' ? 'bg-blue-100 border-blue-300' : 'border-gray-300'}`}
-        >
-          Sort by Median {sortBy === 'median' && (sortDir === 'desc' ? '↓' : '↑')}
-        </button>
-        <button
-          onClick={() => handleSort('name')}
-          className={`px-3 py-1 rounded border ${sortBy === 'name' ? 'bg-blue-100 border-blue-300' : 'border-gray-300'}`}
-        >
-          Sort by Name {sortBy === 'name' && (sortDir === 'asc' ? '↑' : '↓')}
-        </button>
+      {/* Controls row: sort + player filter */}
+      <div className="flex flex-wrap items-start gap-4 mb-4">
+        {/* Sort buttons */}
+        <div className="flex gap-2 text-sm">
+          <button
+            onClick={() => handleSort('iqr')}
+            className={`px-3 py-1 rounded border ${sortBy === 'iqr' ? 'bg-blue-100 border-blue-300' : 'border-gray-300'}`}
+          >
+            Sort by Controversy (IQR) {sortBy === 'iqr' && (sortDir === 'desc' ? '↓' : '↑')}
+          </button>
+          <button
+            onClick={() => handleSort('median')}
+            className={`px-3 py-1 rounded border ${sortBy === 'median' ? 'bg-blue-100 border-blue-300' : 'border-gray-300'}`}
+          >
+            Sort by Median {sortBy === 'median' && (sortDir === 'desc' ? '↓' : '↑')}
+          </button>
+          <button
+            onClick={() => handleSort('name')}
+            className={`px-3 py-1 rounded border ${sortBy === 'name' ? 'bg-blue-100 border-blue-300' : 'border-gray-300'}`}
+          >
+            Sort by Name {sortBy === 'name' && (sortDir === 'asc' ? '↑' : '↓')}
+          </button>
+        </div>
+
+        {/* Player multi-select filter */}
+        <div className="relative" ref={pickerRef}>
+          <button
+            onClick={() => setPlayerPickerOpen((o) => !o)}
+            className={`px-3 py-1 text-sm rounded border ${
+              selectedPlayerIds.size > 0 ? 'bg-green-50 border-green-400 text-green-800' : 'border-gray-300 text-gray-700 hover:bg-gray-50'
+            }`}
+          >
+            {selectedPlayerIds.size > 0
+              ? `Comparing ${selectedPlayerIds.size} player${selectedPlayerIds.size > 1 ? 's' : ''}`
+              : 'Compare Players...'}
+          </button>
+
+          {selectedPlayerIds.size > 0 && (
+            <button
+              onClick={clearSelection}
+              className="ml-2 px-2 py-1 text-xs rounded border border-gray-300 text-gray-500 hover:bg-gray-100"
+            >
+              Clear
+            </button>
+          )}
+
+          {playerPickerOpen && (
+            <div className="absolute top-full left-0 mt-1 w-72 bg-white border border-gray-200 rounded-lg shadow-lg z-50 max-h-80 flex flex-col">
+              {/* Search input */}
+              <div className="p-2 border-b">
+                <input
+                  type="text"
+                  placeholder="Search by name or number..."
+                  value={pickerSearch}
+                  onChange={(e) => setPickerSearch(e.target.value)}
+                  className="w-full px-2 py-1 text-sm border border-gray-300 rounded"
+                  autoFocus
+                />
+              </div>
+              {/* Player checkboxes */}
+              <div className="overflow-y-auto flex-1 p-2 space-y-1">
+                {pickerPlayers.map((bp) => (
+                  <label
+                    key={bp.playerId}
+                    className={`flex items-center gap-2 px-2 py-1 rounded cursor-pointer text-sm hover:bg-gray-50 ${
+                      selectedPlayerIds.has(bp.playerId) ? 'bg-blue-50' : ''
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedPlayerIds.has(bp.playerId)}
+                      onChange={() => togglePlayer(bp.playerId)}
+                      className="rounded border-gray-300 text-blue-600"
+                    />
+                    <span className="text-gray-400">#{bp.playerNumber}</span>
+                    <span>{bp.playerName}</span>
+                  </label>
+                ))}
+                {pickerPlayers.length === 0 && (
+                  <p className="text-xs text-gray-400 text-center py-2">No matches</p>
+                )}
+              </div>
+              {/* Footer with quick actions */}
+              <div className="border-t p-2 flex justify-between text-xs">
+                <button
+                  onClick={clearSelection}
+                  className="text-gray-500 hover:text-gray-700"
+                >
+                  Clear all
+                </button>
+                <button
+                  onClick={() => setPlayerPickerOpen(false)}
+                  className="text-blue-600 hover:text-blue-800 font-medium"
+                >
+                  Done
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
 
+      {/* Selected player chips */}
+      {selectedPlayerIds.size > 0 && (
+        <div className="flex flex-wrap gap-1 mb-3">
+          {boxPlots
+            .filter((bp) => selectedPlayerIds.has(bp.playerId))
+            .map((bp) => (
+              <span
+                key={bp.playerId}
+                className="inline-flex items-center gap-1 px-2 py-0.5 text-xs bg-blue-100 text-blue-800 rounded-full"
+              >
+                #{bp.playerNumber} {bp.playerName}
+                <button
+                  onClick={() => togglePlayer(bp.playerId)}
+                  className="hover:text-blue-600"
+                >
+                  ×
+                </button>
+              </span>
+            ))}
+        </div>
+      )}
+
       <div className="text-xs text-gray-400 mb-2">
         Scale: {globalMin.toFixed(1)} – {globalMax.toFixed(1)} (normalized total score)
+        {selectedPlayerIds.size > 0 && (
+          <span className="ml-2 text-blue-500">
+            · Showing {sorted.length} of {boxPlots.length} players
+          </span>
+        )}
       </div>
 
       <div className="space-y-2">
@@ -140,9 +295,11 @@ export default function PlayerBoxPlotsTab({ boxPlots }: Props) {
             </div>
 
             {/* Stats */}
-            <div className="w-40 text-xs text-gray-500 flex-shrink-0">
+            <div className="w-56 text-xs text-gray-500 flex-shrink-0">
               Med: {bp.median} · IQR: {bp.iqr}
               <span className="text-gray-400 text-xs ml-1 cursor-help" title="Interquartile range -- how spread out the middle 50% of scores are. Higher = more disagreement between coaches.">&#9432;</span>
+              <span className="ml-2 text-gray-400">±{bp.ci95}</span>
+              <span className="text-gray-400 text-xs ml-1 cursor-help" title={`95% confidence interval (n=${bp.n}, SEM=${bp.sem}). The true mean score is likely within ±${bp.ci95} of the displayed median.`}>&#9432;</span>
             </div>
           </div>
         ))}

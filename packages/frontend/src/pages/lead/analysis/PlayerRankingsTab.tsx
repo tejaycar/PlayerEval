@@ -5,9 +5,40 @@ interface Props {
   rankings: NormalizedPlayerScore[];
 }
 
-type SortField = 'normalizedTotal' | 'rawTotal' | 'attitude' | 'effort' | 'footballIQ' | 'generalSkill' | 'positionSkill' | 'playerName' | 'playerNumber' | 'primaryPosition' | 'secondaryPosition' | 'evaluationCount';
+type SortField = 'normalizedTotal' | 'rawTotal' | 'attitude' | 'effort' | 'footballIQ' | 'generalSkill' | 'positionSkill' | 'playerName' | 'playerNumber' | 'primaryPosition' | 'secondaryPosition' | 'evaluationCount' | 'sem' | 'ci95';
 
 const STRING_FIELDS: Set<SortField> = new Set(['playerName', 'playerNumber', 'primaryPosition', 'secondaryPosition']);
+
+/** Visual reliability indicator based on SEM and sample size */
+function ReliabilityBadge({ sem, ci95, n }: { sem: number; ci95: number; n: number }) {
+  // Classify reliability: lower CI relative to score range is better
+  // Using CI95 as the key metric - thresholds tuned for 5-category scoring (total ~5-50 range)
+  let color: string;
+  let label: string;
+
+  if (n < 3) {
+    color = 'bg-gray-100 text-gray-500';
+    label = 'Low n';
+  } else if (ci95 <= 1.5) {
+    color = 'bg-green-100 text-green-700';
+    label = 'High';
+  } else if (ci95 <= 3.0) {
+    color = 'bg-yellow-100 text-yellow-700';
+    label = 'Moderate';
+  } else {
+    color = 'bg-red-100 text-red-700';
+    label = 'Low';
+  }
+
+  return (
+    <span
+      className={`inline-block px-1.5 py-0.5 text-xs rounded ${color} cursor-help`}
+      title={`SEM: ${sem} · 95% CI: ±${ci95} · n=${n}\nSmaller CI = more reliable rating`}
+    >
+      {label}
+    </span>
+  );
+}
 
 export default function PlayerRankingsTab({ rankings }: Props) {
   const [sortBy, setSortBy] = useState<SortField>('normalizedTotal');
@@ -35,6 +66,10 @@ export default function PlayerRankingsTab({ rankings }: Props) {
       cmp = (a.secondaryPosition || '').localeCompare(b.secondaryPosition || '');
     } else if (sortBy === 'evaluationCount') {
       cmp = a.evaluationCount - b.evaluationCount;
+    } else if (sortBy === 'sem') {
+      cmp = a.sem - b.sem;
+    } else if (sortBy === 'ci95') {
+      cmp = a.ci95 - b.ci95;
     } else if (sortBy === 'normalizedTotal') {
       cmp = a.normalizedTotal - b.normalizedTotal;
     } else if (sortBy === 'rawTotal') {
@@ -77,6 +112,8 @@ export default function PlayerRankingsTab({ rankings }: Props) {
             <SortHeader field="positionSkill" label="Position" />
             <SortHeader field="rawTotal" label="Raw Avg" />
             <SortHeader field="normalizedTotal" label="Normalized" />
+            <SortHeader field="ci95" label="±95% CI" />
+            <SortHeader field="sem" label="Reliability" />
           </tr>
         </thead>
 
@@ -96,6 +133,10 @@ export default function PlayerRankingsTab({ rankings }: Props) {
               <td className="px-3 py-2 text-center">{player.categories.positionSkill}</td>
               <td className="px-3 py-2 text-center text-gray-500">{player.rawTotal}</td>
               <td className="px-3 py-2 text-center font-bold text-blue-700">{player.normalizedTotal}</td>
+              <td className="px-3 py-2 text-center text-gray-500 text-xs">±{player.ci95}</td>
+              <td className="px-3 py-2 text-center">
+                <ReliabilityBadge sem={player.sem} ci95={player.ci95} n={player.evaluationCount} />
+              </td>
             </tr>
           ))}
         </tbody>
