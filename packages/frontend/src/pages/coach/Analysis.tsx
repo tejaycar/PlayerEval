@@ -10,6 +10,8 @@ export default function CoachAnalysis() {
   const [activeTab, setActiveTab] = useState<TabId>('boxplots');
   const [boxPlots, setBoxPlots] = useState<BoxPlotStats[]>([]);
   const [coachReliability, setCoachReliability] = useState<CoachReliabilityMetrics[]>([]);
+  const [staffAgreementScore, setStaffAgreementScore] = useState<number | undefined>(undefined);
+  const [staffAgreementLabel, setStaffAgreementLabel] = useState<string | undefined>(undefined);
   const [coachList, setCoachList] = useState<{ id: string; name: string }[]>([]);
   const [excludedCoachIds, setExcludedCoachIds] = useState<string[]>([]);
   const [excludedRatings, setExcludedRatings] = useState<Array<{coachId: string; playerId: string}>>([]);
@@ -69,6 +71,8 @@ export default function CoachAnalysis() {
       const data = await evaluations.analysis(excludedIds, excludedRatingsData);
       setBoxPlots(data.boxPlots);
       setCoachReliability(data.coachReliability);
+      setStaffAgreementScore(data.staffAgreementScore);
+      setStaffAgreementLabel(data.staffAgreementLabel);
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -176,7 +180,7 @@ export default function CoachAnalysis() {
       )}
 
       {activeTab === 'coachAnalysis' && (
-        <CoachAnalysisTab reliability={anonymizedReliability} excludedCoachIds={excludedCoachIds} excludedRatings={excludedRatings} currentCoachId={currentUser?.coachId} />
+        <CoachAnalysisTab reliability={anonymizedReliability} excludedCoachIds={excludedCoachIds} excludedRatings={excludedRatings} currentCoachId={currentUser?.coachId} staffAgreementScore={staffAgreementScore} staffAgreementLabel={staffAgreementLabel} />
       )}
     </div>
   );

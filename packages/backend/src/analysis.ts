@@ -111,6 +111,101 @@ function spearmanRankCorrelation(x: number[], y: number[]): number {
   return Math.round(rho * 1000) / 1000;
 }
 
+// === ICC(3,1) Computation ===
+
+/**
+ * Computes ICC(3,1) - two-way mixed, single measures, consistency agreement.
+ * Handles incomplete data (not all raters rate all subjects).
+ *
+ * ICC = (MS_between - MS_error) / (MS_between + (k-1) * MS_error)
+ *
+ * Where:
+ *   MS_between = mean squares between subjects (players)
+ *   MS_error = residual mean squares
+ *   k = average number of raters per subject
+ *
+ * Only includes subjects (players) rated by 2 or more raters.
+ * Returns value clamped to [0, 1].
+ */
+export function computeICC(evalsByPlayer: Map<string, { normalizedTotal: number; coachId: string }[]>): number {
+  // Filter to players rated by at least 2 coaches
+  const validPlayers: { scores: number[] }[] = [];
+  for (const [, evals] of evalsByPlayer) {
+    if (evals.length >= 2) {
+      validPlayers.push({ scores: evals.map(e => e.normalizedTotal) });
+    }
+  }
+
+  if (validPlayers.length < 2) return 0;
+
+  const n = validPlayers.length; // number of subjects (players)
+  const totalObservations = validPlayers.reduce((sum, p) => sum + p.scores.length, 0);
+  const k = totalObservations / n; // average number of raters per subject
+
+  if (k < 2) return 0;
+
+  // Grand mean (mean of all observations)
+  let grandSum = 0;
+  for (const player of validPlayers) {
+    for (const score of player.scores) {
+      grandSum += score;
+    }
+  }
+  const grandMean = grandSum / totalObservations;
+
+  // SS_between: sum of k_i * (playerMean_i - grandMean)^2
+  let ssBetween = 0;
+  for (const player of validPlayers) {
+    const playerMean = player.scores.reduce((s, v) => s + v, 0) / player.scores.length;
+    ssBetween += player.scores.length * (playerMean - grandMean) ** 2;
+  }
+
+  // SS_total: sum of (x_ij - grandMean)^2
+  let ssTotal = 0;
+  for (const player of validPlayers) {
+    for (const score of player.scores) {
+      ssTotal += (score - grandMean) ** 2;
+    }
+  }
+
+  // SS_within: sum of (x_ij - playerMean_i)^2
+  let ssWithin = 0;
+  for (const player of validPlayers) {
+    const playerMean = player.scores.reduce((s, v) => s + v, 0) / player.scores.length;
+    for (const score of player.scores) {
+      ssWithin += (score - playerMean) ** 2;
+    }
+  }
+
+  // Degrees of freedom
+  const dfBetween = n - 1;
+  const dfError = totalObservations - n; // residual df for one-way model
+
+  if (dfBetween <= 0 || dfError <= 0) return 0;
+
+  const msBetween = ssBetween / dfBetween;
+  const msError = ssWithin / dfError;
+
+  // ICC(3,1) consistency: (MS_between - MS_error) / (MS_between + (k-1) * MS_error)
+  const denominator = msBetween + (k - 1) * msError;
+  if (denominator === 0) return 0;
+
+  const icc = (msBetween - msError) / denominator;
+
+  // Clamp to [0, 1]
+  return Math.max(0, Math.min(1, icc));
+}
+
+/**
+ * Returns a human-readable label for an ICC value.
+ */
+function getICCLabel(icc: number): string {
+  if (icc >= 0.9) return 'Excellent';
+  if (icc >= 0.75) return 'Good';
+  if (icc >= 0.5) return 'Fair';
+  return 'Poor';
+}
+
 // === Core Analysis Computation ===
 
 interface CoachCategoryStats {
@@ -533,6 +628,9 @@ export function computeAnalysis(
   }
 
   // === Build response ===
+  const staffAgreementScore = round2(computeICC(evalsByPlayer));
+  const staffAgreementLabel = getICCLabel(staffAgreementScore);
+
   const metadata: AnalysisMetadata = {
     totalPlayers: evalsByPlayer.size,
     totalCoaches: evalsByCoach.size,
@@ -547,6 +645,8 @@ export function computeAnalysis(
     boxPlots,
     coachReliability,
     playerImpactWarnings,
+    staffAgreementScore,
+    staffAgreementLabel,
     metadata,
   };
 }

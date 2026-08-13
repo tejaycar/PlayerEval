@@ -334,7 +334,7 @@ export default function Analysis() {
             <PlayerBoxPlotsTab boxPlots={filteredBoxPlots} />
           )}
           {activeTab === 'coachAnalysis' && (
-            <CoachAnalysisTab reliability={displayReliability} excludedCoachIds={excludedCoachIds} excludedRatings={excludedRatings} />
+            <CoachAnalysisTab reliability={displayReliability} excludedCoachIds={excludedCoachIds} excludedRatings={excludedRatings} staffAgreementScore={analysis.staffAgreementScore} staffAgreementLabel={analysis.staffAgreementLabel} />
           )}
           {activeTab === 'distribution' && (
             <DistributionTab rankings={filteredRankings} />
