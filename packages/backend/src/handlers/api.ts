@@ -791,6 +791,32 @@ export async function handler(event: Event): Promise<Result> {
     return json(200, { summary });
   }
 
+  // GET /evaluations/history - Get rating history (lead only)
+  if (method === 'GET' && path === '/evaluations/history') {
+    if (!isLead) return json(403, { error: 'Only leads can view rating history' });
+
+    const items = await queryItems(`TEAM#${teamId}`, 'HISTORY#');
+    const history = items.map((item) => ({
+      id: item.id,
+      teamId: item.teamId,
+      coachId: item.coachId,
+      playerId: item.playerId,
+      attitude: item.attitude,
+      effort: item.effort,
+      footballIQ: item.footballIQ,
+      generalSkill: item.generalSkill,
+      positionSkill: item.positionSkill,
+      totalScore: item.totalScore,
+      timestamp: item.timestamp,
+      previousScores: item.previousScores || null,
+    }));
+
+    // Sort by timestamp descending (most recent first)
+    history.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+
+    return json(200, { history });
+  }
+
   // POST /evaluations/analysis - Compute normalized analysis (POST to accept excludedCoachIds)
   if (method === 'POST' && path === '/evaluations/analysis') {
     // Enforce visibility setting for non-leads
@@ -945,13 +971,43 @@ export async function handler(event: Event): Promise<Result> {
     };
     const totalScore = scores.attitude + scores.effort + scores.footballIQ + scores.generalSkill + scores.positionSkill;
 
+    // Capture previous scores for history if this is an update
+    const previousScores = existing
+      ? {
+          attitude: existing.attitude,
+          effort: existing.effort,
+          footballIQ: existing.footballIQ,
+          generalSkill: existing.generalSkill,
+          positionSkill: existing.positionSkill,
+          totalScore: existing.totalScore,
+        }
+      : null;
+
+    const now = new Date().toISOString();
+
     if (existing) {
       // Update existing evaluation
       await updateItem(`TEAM#${teamId}`, existing.SK, {
         ...scores,
         totalScore,
-        updatedAt: new Date().toISOString(),
+        updatedAt: now,
       });
+
+      // Write history record for the update
+      const historyId = uuidv4();
+      await putItem({
+        PK: `TEAM#${teamId}`,
+        SK: `HISTORY#${coachId}#${playerId}#${now}`,
+        id: historyId,
+        teamId,
+        coachId,
+        playerId,
+        ...scores,
+        totalScore,
+        timestamp: now,
+        previousScores,
+      });
+
       return json(200, { updated: true, id: existing.id });
     }
 
@@ -965,8 +1021,23 @@ export async function handler(event: Event): Promise<Result> {
       playerId,
       ...scores,
       totalScore,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    // Write history record for the new evaluation
+    const historyId = uuidv4();
+    await putItem({
+      PK: `TEAM#${teamId}`,
+      SK: `HISTORY#${coachId}#${playerId}#${now}`,
+      id: historyId,
+      teamId,
+      coachId,
+      playerId,
+      ...scores,
+      totalScore,
+      timestamp: now,
+      previousScores: null,
     });
 
     return json(201, { id });

@@ -1,4 +1,4 @@
-import type { RatingCategory } from './types';
+import type { RatingCategory, RatingHistoryEntry } from './types';
 
 // === Analysis Request/Response Types ===
 
@@ -105,4 +105,10 @@ export interface AnalysisMetadata {
   excludedRatings: ExcludedRating[];
   /** Coaches with stddev=0 who couldn't be Z-normalized */
   undifferentiatingCoaches: string[];
+}
+
+// === Rating Integrity Response ===
+
+export interface RatingIntegrityResponse {
+  history: RatingHistoryEntry[];
 }

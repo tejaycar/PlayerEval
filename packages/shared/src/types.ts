@@ -77,6 +77,32 @@ export interface CoachUploadRow {
   max_players: string;
 }
 
+// === Rating History Types ===
+
+export interface RatingScores {
+  attitude: number;
+  effort: number;
+  footballIQ: number;
+  generalSkill: number;
+  positionSkill: number;
+  totalScore: number;
+}
+
+export interface RatingHistoryEntry {
+  id: string;
+  teamId: string;
+  coachId: string;
+  playerId: string;
+  attitude: number;
+  effort: number;
+  footballIQ: number;
+  generalSkill: number;
+  positionSkill: number;
+  totalScore: number;
+  timestamp: string; // ISO string
+  previousScores: RatingScores | null; // null for first submission
+}
+
 export type RatingCategory = 'attitude' | 'effort' | 'footballIQ' | 'generalSkill' | 'positionSkill';
 
 export const RATING_CATEGORIES: RatingCategory[] = [
