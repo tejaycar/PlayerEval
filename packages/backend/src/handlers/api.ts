@@ -870,11 +870,16 @@ export async function handler(event: Event): Promise<Result> {
 
   // POST /evaluations/analysis - Compute normalized analysis (POST to accept excludedCoachIds)
   if (method === 'POST' && path === '/evaluations/analysis') {
-    // Enforce visibility setting for non-leads
+    // Enforce visibility settings for non-leads.
+    // Both the coach Results page and Analysis page call this endpoint,
+    // so block access if either visibility setting is disabled.
     if (!isLead) {
       const teamMeta = await getItem(`TEAM#${teamId}`, 'META');
       if (teamMeta?.coachAnalysisVisible === false) {
         return json(403, { error: 'Analysis is not currently available' });
+      }
+      if (teamMeta?.coachResultsVisible === false) {
+        return json(403, { error: 'Results are not currently available' });
       }
     }
 
