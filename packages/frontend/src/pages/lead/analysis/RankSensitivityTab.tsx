@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import type { NormalizedPlayerScore, AnalysisResponse } from '@player-eval/shared';
 
 interface Props {
@@ -26,6 +26,8 @@ interface RankImpact {
 interface LocoResult {
   /** Coach IDs in this combination */
   coachIds: string[];
+  /** How many coaches in this combo (1, 2, or 3) */
+  level: number;
   /** Rankings when these coaches are removed */
   rankings: RankImpact[];
   /** Spearman rank correlation with base ranking */
@@ -52,12 +54,30 @@ export default function RankSensitivityTab({
   const [comboResults2, setComboResults2] = useState<LocoResult[]>([]);
   const [comboResults3, setComboResults3] = useState<LocoResult[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loadingMessage, setLoadingMessage] = useState('');
   const [computed, setComputed] = useState<Set<ComboLevel>>(new Set());
   const [viewMode, setViewMode] = useState<ViewMode>('summary');
   const [outlierMode, setOutlierMode] = useState<'with' | 'without'>('with');
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
   const [activeComboLevel, setActiveComboLevel] = useState<ComboLevel>(1);
   const [stabilityLevel, setStabilityLevel] = useState<ComboLevel>(1);
+
+  // === Analysis response cache ===
+  // Keyed by sorted excluded coach IDs string. Survives across re-renders until the tab unmounts.
+  const analysisCache = useRef<Map<string, AnalysisResponse>>(new Map());
+
+  /** Cached version of getAnalysisForExclusion */
+  const getCachedAnalysis = async (excludedIds: string[]): Promise<AnalysisResponse | null> => {
+    const key = [...excludedIds].sort().join('|');
+    if (analysisCache.current.has(key)) {
+      return analysisCache.current.get(key)!;
+    }
+    const result = await getAnalysisForExclusion(excludedIds);
+    if (result) {
+      analysisCache.current.set(key, result);
+    }
+    return result;
+  };
 
   // Map coach IDs to names for display
   const coachNameMap = useMemo(() => {
@@ -114,7 +134,7 @@ export default function RankSensitivityTab({
   // Compute result for a set of excluded coach IDs
   const computeForCombo = async (coachCombo: { id: string; name: string }[]): Promise<LocoResult | null> => {
     const excludeIds = [...currentExcludedCoachIds, ...coachCombo.map((c) => c.id)];
-    const locoAnalysis = await getAnalysisForExclusion(excludeIds);
+    const locoAnalysis = await getCachedAnalysis(excludeIds);
     if (!locoAnalysis) return null;
 
     const rankings: RankImpact[] = locoAnalysis.playerRankings.map((p, idx) => {
@@ -142,6 +162,7 @@ export default function RankSensitivityTab({
 
     return {
       coachIds: coachCombo.map((c) => c.id),
+      level: coachCombo.length,
       rankings,
       rankCorrelation: Math.round(rankCorrelation * 1000) / 1000,
       maxShift,
@@ -150,39 +171,66 @@ export default function RankSensitivityTab({
     };
   };
 
-  // Run LOCO analysis for a given combo level
-  const runLocoAnalysis = async (level: ComboLevel) => {
-    setLoading(true);
+  /** Compute results for a single level (does NOT cascade) */
+  const computeLevel = async (level: ComboLevel): Promise<LocoResult[]> => {
     const combos = combinations(activeCoaches, level);
     const results: LocoResult[] = [];
-
     for (const combo of combos) {
       const result = await computeForCombo(combo);
       if (result) results.push(result);
     }
-
-    // Sort by impact (lowest correlation = most impact)
     results.sort((a, b) => a.rankCorrelation - b.rankCorrelation);
+    return results;
+  };
 
-    if (level === 1) setLocoResults(results);
-    else if (level === 2) setComboResults2(results);
-    else if (level === 3) setComboResults3(results);
+  /**
+   * Run LOCO analysis with cascade:
+   * - L3CO also computes L2CO and L1CO
+   * - L2CO also computes L1CO
+   */
+  const runLocoAnalysis = async (targetLevel: ComboLevel) => {
+    setLoading(true);
 
-    setComputed((prev) => new Set([...prev, level]));
+    // Determine which levels need computing
+    const levelsToCompute: ComboLevel[] = [];
+    for (let l = 1 as ComboLevel; l <= targetLevel; l++) {
+      if (!computed.has(l as ComboLevel)) {
+        levelsToCompute.push(l as ComboLevel);
+      }
+    }
+
+    for (const level of levelsToCompute) {
+      const totalPerms = comboCount(level);
+      setLoadingMessage(`Computing L${level}CO (${totalPerms} permutation${totalPerms > 1 ? 's' : ''})...`);
+
+      const results = await computeLevel(level);
+
+      if (level === 1) setLocoResults(results);
+      else if (level === 2) setComboResults2(results);
+      else if (level === 3) setComboResults3(results);
+
+      setComputed((prev) => new Set([...prev, level]));
+    }
+
     setLoading(false);
+    setLoadingMessage('');
   };
 
   // Get results for the active combo level in Coach Impact view
+  // When viewing L3CO, show ALL levels (L1CO + L2CO + L3CO)
+  // When viewing L2CO, show L1CO + L2CO
+  // When viewing L1CO, show only L1CO
   const activeResults = useMemo(() => {
-    if (activeComboLevel === 1) return locoResults;
-    if (activeComboLevel === 2) return comboResults2;
-    return comboResults3;
+    const results: LocoResult[] = [];
+    if (activeComboLevel >= 1) results.push(...locoResults);
+    if (activeComboLevel >= 2) results.push(...comboResults2);
+    if (activeComboLevel >= 3) results.push(...comboResults3);
+    // Sort all combined results by impact (lowest correlation first)
+    results.sort((a, b) => a.rankCorrelation - b.rankCorrelation);
+    return results;
   }, [activeComboLevel, locoResults, comboResults2, comboResults3]);
 
   // Get cumulative results for Player Stability view
-  // L1CO = just single-coach results
-  // L2CO = single + 2-coach results
-  // L3CO = single + 2-coach + 3-coach results
   const stabilityResults = useMemo(() => {
     const results: LocoResult[] = [...locoResults];
     if (stabilityLevel >= 2) results.push(...comboResults2);
@@ -190,20 +238,23 @@ export default function RankSensitivityTab({
     return results;
   }, [stabilityLevel, locoResults, comboResults2, comboResults3]);
 
-  // Highest computed level
-  const highestComputed = useMemo(() => {
-    if (computed.has(3)) return 3;
-    if (computed.has(2)) return 2;
-    if (computed.has(1)) return 1;
-    return 0;
-  }, [computed]);
-
   // Combo count info
   const comboCount = (level: ComboLevel) => {
     const n = activeCoaches.length;
     if (level === 1) return n;
     if (level === 2) return (n * (n - 1)) / 2;
     return (n * (n - 1) * (n - 2)) / 6;
+  };
+
+  // Total permutations for a cascaded run
+  const totalPermsUpTo = (level: ComboLevel) => {
+    let total = 0;
+    for (let l = 1; l <= level; l++) {
+      if (!computed.has(l as ComboLevel)) {
+        total += comboCount(l as ComboLevel);
+      }
+    }
+    return total;
   };
 
   // Toggle detail row
@@ -271,6 +322,13 @@ export default function RankSensitivityTab({
 
   const isAnyComputed = computed.size > 0;
 
+  /** Label showing which levels are included in the current view */
+  const levelBadge = (level: number) => {
+    if (level === 1) return 'L1CO';
+    if (level === 2) return 'L2CO';
+    return 'L3CO';
+  };
+
   return (
     <div>
       <div className="mb-4">
@@ -307,7 +365,7 @@ export default function RankSensitivityTab({
         <div>
           {/* Combo level selector */}
           <div className="flex items-center gap-2 mb-4">
-            <span className="text-sm text-gray-600">Combination size:</span>
+            <span className="text-sm text-gray-600">View up to:</span>
             {([1, 2, 3] as ComboLevel[]).map((level) => (
               <button
                 key={level}
@@ -318,26 +376,29 @@ export default function RankSensitivityTab({
                     : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
                 }`}
               >
-                {level === 1 ? '1 Coach' : `${level} Coaches`}
-                <span className="ml-1 text-xs opacity-75">({comboCount(level)})</span>
+                L{level}CO
+                {computed.has(level) && <span className="ml-1 text-xs opacity-75">✓</span>}
               </button>
             ))}
           </div>
 
-          {/* Run button if this level hasn't been computed */}
-          {!computed.has(activeComboLevel) && (
+          {/* Run button if any level up to activeComboLevel hasn't been computed */}
+          {!computed.has(activeComboLevel) && !loading && (
             <div className="text-center py-8">
               <button
                 onClick={() => runLocoAnalysis(activeComboLevel)}
                 disabled={loading}
                 className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
               >
-                {loading ? 'Computing...' : `Run ${activeComboLevel === 1 ? 'L1CO' : `L${activeComboLevel}CO`} Analysis (${comboCount(activeComboLevel)} permutations)`}
+                Compute L{activeComboLevel}CO Analysis
+                {activeComboLevel > 1 && !computed.has(1) && ' (includes L1CO'}
+                {activeComboLevel === 3 && !computed.has(2) && (computed.has(1) ? ' (includes L2CO)' : ' + L2CO)')}
+                {activeComboLevel === 2 && !computed.has(1) && ')'}
               </button>
               <p className="text-xs text-gray-400 mt-2">
-                This re-computes rankings {comboCount(activeComboLevel)} times
-                {activeComboLevel > 1 && ', one for each combination of coaches removed'}.
-                {activeComboLevel === 3 && comboCount(3) > 50 && (
+                Will compute {totalPermsUpTo(activeComboLevel)} total permutations.
+                {activeComboLevel >= 2 && ' Lower levels are computed automatically.'}
+                {activeComboLevel === 3 && totalPermsUpTo(3) > 100 && (
                   <span className="text-amber-500 ml-1"> This may take a moment.</span>
                 )}
               </p>
@@ -346,7 +407,7 @@ export default function RankSensitivityTab({
 
           {loading && (
             <div className="text-center py-4 text-gray-400">
-              Computing L{activeComboLevel}CO permutations...
+              {loadingMessage || 'Computing...'}
             </div>
           )}
 
@@ -354,14 +415,15 @@ export default function RankSensitivityTab({
           {computed.has(activeComboLevel) && !loading && (
             <div>
               <h4 className="text-sm font-semibold mb-3 text-gray-700">
-                {activeComboLevel === 1 ? 'Single Coach' : `${activeComboLevel}-Coach Combination`} Influence on Rankings (sorted by impact)
+                All Coach Combinations up to L{activeComboLevel}CO (sorted by impact)
               </h4>
               <table className="w-full bg-white rounded-lg shadow-sm border text-sm">
                 <thead className="bg-gray-50">
                   <tr>
                     <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">
-                      {activeComboLevel === 1 ? 'Coach' : 'Coaches'}
+                      Coach(es)
                     </th>
+                    <th className="px-3 py-2 text-center text-xs font-medium text-gray-500">Level</th>
                     <th className="px-3 py-2 text-center text-xs font-medium text-gray-500">
                       Rank Correlation
                       <span className="text-gray-400 text-xs ml-1 cursor-help" title="Spearman correlation between base rankings and rankings without these coach(es). 1.0 = no change, lower = more influence.">ⓘ</span>
@@ -386,6 +448,15 @@ export default function RankSensitivityTab({
                       <React.Fragment key={rowKey}>
                         <tr className="hover:bg-gray-50">
                           <td className="px-3 py-2 font-medium">{getComboLabel(result.coachIds)}</td>
+                          <td className="px-3 py-2 text-center">
+                            <span className={`inline-block px-1.5 py-0.5 text-xs rounded ${
+                              result.level === 1 ? 'bg-blue-100 text-blue-700' :
+                              result.level === 2 ? 'bg-purple-100 text-purple-700' :
+                              'bg-orange-100 text-orange-700'
+                            }`}>
+                              {levelBadge(result.level)}
+                            </span>
+                          </td>
                           <td className="px-3 py-2 text-center">
                             <span className={result.rankCorrelation < 0.95 ? 'text-amber-600 font-medium' : 'text-gray-600'}>
                               {result.rankCorrelation.toFixed(3)}
@@ -416,7 +487,7 @@ export default function RankSensitivityTab({
                         {/* Expanded detail row */}
                         {isExpanded && (
                           <tr>
-                            <td colSpan={6} className="px-4 py-3 bg-blue-50 border-l-4 border-blue-300">
+                            <td colSpan={7} className="px-4 py-3 bg-blue-50 border-l-4 border-blue-300">
                               <p className="text-xs font-semibold text-gray-600 mb-2">
                                 Players shifted more than 3 rank positions:
                               </p>
@@ -455,9 +526,10 @@ export default function RankSensitivityTab({
 
               {activeResults.length > 0 && (
                 <div className="mt-3 text-xs text-gray-400">
-                  Interpretation: A rank correlation of 1.000 means removing the coach(es) doesn't change rankings at all.
-                  Values below 0.95 indicate meaningful influence. Below 0.90 = strong "swing vote" combination.
-                  Click "Details" to see which players shift more than 3 rank positions.
+                  Showing {activeResults.length} total combinations across L1CO
+                  {activeComboLevel >= 2 && ' + L2CO'}
+                  {activeComboLevel >= 3 && ' + L3CO'}, sorted by impact.
+                  Values below 0.95 indicate meaningful influence. Click "Details" to see players shifted &gt;3 positions.
                 </div>
               )}
             </div>
@@ -468,24 +540,24 @@ export default function RankSensitivityTab({
       {/* === HEATMAP VIEW: Player Stability === */}
       {viewMode === 'heatmap' && (
         <div>
-          {!isAnyComputed && (
+          {!isAnyComputed && !loading && (
             <div className="text-center py-8">
               <button
                 onClick={() => runLocoAnalysis(1)}
                 disabled={loading}
                 className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
               >
-                {loading ? 'Computing...' : `Run L1CO Analysis (${activeCoaches.length} coaches)`}
+                Run L1CO Analysis ({activeCoaches.length} permutations)
               </button>
               <p className="text-xs text-gray-400 mt-2">
-                This re-computes rankings {activeCoaches.length} times, once for each coach removed.
+                Computes rankings with each coach removed one at a time.
               </p>
             </div>
           )}
 
           {loading && (
             <div className="text-center py-4 text-gray-400">
-              Computing LOCO permutations...
+              {loadingMessage || 'Computing...'}
             </div>
           )}
 
@@ -499,7 +571,7 @@ export default function RankSensitivityTab({
                 <div className="flex items-center gap-2">
                   <span className="text-xs text-gray-500">View:</span>
                   {([1, 2, 3] as ComboLevel[]).map((level) => {
-                    const isAvailable = level === 1 ? computed.has(1) : level === 2 ? computed.has(2) : computed.has(3);
+                    const isAvailable = computed.has(level);
                     return (
                       <button
                         key={level}
@@ -507,9 +579,7 @@ export default function RankSensitivityTab({
                           if (isAvailable) {
                             setStabilityLevel(level);
                           } else {
-                            // Compute the missing level first
-                            runLocoAnalysis(level);
-                            setStabilityLevel(level);
+                            runLocoAnalysis(level).then(() => setStabilityLevel(level));
                           }
                         }}
                         disabled={loading}
