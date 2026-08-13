@@ -90,6 +90,10 @@ export interface AnalysisResponse {
   boxPlots: BoxPlotStats[];
   coachReliability: CoachReliabilityMetrics[]; // only populated for leads
   playerImpactWarnings: PlayerImpactWarning[]; // players losing >1 rating from exclusions
+  /** ICC(3,1) staff agreement score: 0 = no agreement, 1 = perfect agreement */
+  staffAgreementScore: number;
+  /** Human-readable label: 'Excellent', 'Good', 'Fair', or 'Poor' */
+  staffAgreementLabel: string;
   metadata: AnalysisMetadata;
 }
 

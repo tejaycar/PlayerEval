@@ -116,6 +116,8 @@ export const team = {
   saveExcludedRatings: (excludedRatings: Array<{coachId: string, playerId: string}>) => request('PUT', '/team/excluded-ratings', { excludedRatings }),
   getExclusionMode: () => request('GET', '/team/exclusion-mode'),
   saveExclusionMode: (exclusionMode: string) => request('PUT', '/team/exclusion-mode', { exclusionMode }),
+  getSettings: () => request('GET', '/team/settings'),
+  saveSettings: (settings: { coachResultsVisible?: boolean; coachAnalysisVisible?: boolean }) => request('PUT', '/team/settings', settings),
 };
 
 // Players

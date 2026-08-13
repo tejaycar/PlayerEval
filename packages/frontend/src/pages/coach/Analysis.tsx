@@ -10,19 +10,42 @@ export default function CoachAnalysis() {
   const [activeTab, setActiveTab] = useState<TabId>('boxplots');
   const [boxPlots, setBoxPlots] = useState<BoxPlotStats[]>([]);
   const [coachReliability, setCoachReliability] = useState<CoachReliabilityMetrics[]>([]);
+  const [staffAgreementScore, setStaffAgreementScore] = useState<number | undefined>(undefined);
+  const [staffAgreementLabel, setStaffAgreementLabel] = useState<string | undefined>(undefined);
   const [coachList, setCoachList] = useState<{ id: string; name: string }[]>([]);
   const [excludedCoachIds, setExcludedCoachIds] = useState<string[]>([]);
   const [excludedRatings, setExcludedRatings] = useState<Array<{coachId: string; playerId: string}>>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [playerFilter, setPlayerFilter] = useState('');
+  const [disabled, setDisabled] = useState(false);
 
   const currentUser = getStoredUser();
 
-  // Load on mount and reload on every tab change (picks up lead's latest exclusions)
+  // Check visibility on mount only
   useEffect(() => {
-    loadData();
-  }, [activeTab]);
+    checkVisibility();
+  }, []);
+
+  // Load data on mount and on every tab change (picks up lead's latest exclusions)
+  useEffect(() => {
+    if (!disabled) {
+      loadData();
+    }
+  }, [activeTab, disabled]);
+
+  const checkVisibility = async () => {
+    try {
+      const settings = await team.getSettings();
+      if (!settings.coachAnalysisVisible) {
+        setDisabled(true);
+        setLoading(false);
+      }
+    } catch (err: any) {
+      setError(err.message);
+      setLoading(false);
+    }
+  };
 
   const loadData = async () => {
     setLoading(true);
@@ -48,6 +71,8 @@ export default function CoachAnalysis() {
       const data = await evaluations.analysis(excludedIds, excludedRatingsData);
       setBoxPlots(data.boxPlots);
       setCoachReliability(data.coachReliability);
+      setStaffAgreementScore(data.staffAgreementScore);
+      setStaffAgreementLabel(data.staffAgreementLabel);
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -87,6 +112,17 @@ export default function CoachAnalysis() {
 
   if (loading && !boxPlots.length && !coachReliability.length) {
     return <div className="text-center py-8">Loading analysis...</div>;
+  }
+
+  if (disabled) {
+    return (
+      <div className="text-center py-12">
+        <div className="bg-gray-50 border border-gray-200 rounded-lg p-8 max-w-md mx-auto">
+          <h3 className="text-lg font-semibold text-gray-700 mb-2">Analysis Not Available</h3>
+          <p className="text-gray-500">Analysis is not currently available. Your lead has not enabled this view.</p>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -144,7 +180,7 @@ export default function CoachAnalysis() {
       )}
 
       {activeTab === 'coachAnalysis' && (
-        <CoachAnalysisTab reliability={anonymizedReliability} excludedCoachIds={excludedCoachIds} excludedRatings={excludedRatings} currentCoachId={currentUser?.coachId} />
+        <CoachAnalysisTab reliability={anonymizedReliability} excludedCoachIds={excludedCoachIds} excludedRatings={excludedRatings} currentCoachId={currentUser?.coachId} staffAgreementScore={staffAgreementScore} staffAgreementLabel={staffAgreementLabel} />
       )}
     </div>
   );

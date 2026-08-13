@@ -6,6 +6,8 @@ interface Props {
   excludedCoachIds?: string[];
   excludedRatings?: Array<{ coachId: string; playerId: string }>;
   currentCoachId?: string; // If provided, only show details button for this coach
+  staffAgreementScore?: number;
+  staffAgreementLabel?: string;
 }
 
 type SortField = 'madFromMedian' | 'meanDeviationFromMean' | 'rankCorrelation' | 'playersRated';
@@ -14,7 +16,7 @@ const InfoTooltip = ({ text }: { text: string }) => (
   <span className="text-gray-400 text-xs ml-1 cursor-help" title={text}>&#9432;</span>
 );
 
-export default function CoachAnalysisTab({ reliability, excludedCoachIds, excludedRatings, currentCoachId }: Props) {
+export default function CoachAnalysisTab({ reliability, excludedCoachIds, excludedRatings, currentCoachId, staffAgreementScore, staffAgreementLabel }: Props) {
   const [sortBy, setSortBy] = useState<SortField>('madFromMedian');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
   const [expandedCoach, setExpandedCoach] = useState<string | null>(null);
@@ -83,6 +85,47 @@ export default function CoachAnalysisTab({ reliability, excludedCoachIds, exclud
 
   return (
     <div>
+      {staffAgreementScore !== undefined && staffAgreementLabel && (
+        <div className="mb-6 p-4 bg-white border rounded-lg shadow-sm">
+          <div className="flex items-center gap-4">
+            <div className="flex-shrink-0">
+              <div className="relative w-16 h-16">
+                <svg className="w-16 h-16 transform -rotate-90" viewBox="0 0 36 36">
+                  <path
+                    d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                    fill="none"
+                    stroke="#e5e7eb"
+                    strokeWidth="3"
+                  />
+                  <path
+                    d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+                    fill="none"
+                    stroke={staffAgreementScore >= 0.75 ? '#16a34a' : staffAgreementScore >= 0.5 ? '#ca8a04' : '#dc2626'}
+                    strokeWidth="3"
+                    strokeDasharray={`${staffAgreementScore * 100}, 100`}
+                  />
+                </svg>
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <span className="text-sm font-bold text-gray-800">{staffAgreementScore.toFixed(2)}</span>
+                </div>
+              </div>
+            </div>
+            <div>
+              <h3 className="text-lg font-semibold text-gray-800">
+                Staff Agreement: <span className={
+                  staffAgreementScore >= 0.75 ? 'text-green-600' :
+                  staffAgreementScore >= 0.5 ? 'text-yellow-600' : 'text-red-600'
+                }>{staffAgreementLabel}</span>
+              </h3>
+              <p className="text-sm text-gray-500 mt-1">
+                Measures overall consistency among coaching staff ratings (ICC).
+                1.0 = perfect agreement, 0.0 = no agreement.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       <p className="text-sm text-gray-600 mb-4">
         Shows how closely each coach's ratings align with the consensus after normalization.
         Lower MAD = more aligned with consensus. Rank correlation shows if the coach orders players similarly.

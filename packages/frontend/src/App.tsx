@@ -9,6 +9,7 @@ import CoachEntry from './pages/lead/CoachEntry';
 import PlayerSummary from './pages/lead/PlayerSummary';
 import CoachAssignment from './pages/lead/CoachAssignment';
 import Analysis from './pages/lead/Analysis';
+import Management from './pages/lead/Management';
 import RatePlayers from './pages/coach/RatePlayers';
 import Results from './pages/coach/Results';
 import CoachAnalysis from './pages/coach/Analysis';
@@ -44,6 +45,7 @@ export default function App() {
         <Route path="player-summary" element={<PlayerSummary />} />
         <Route path="assignments" element={<CoachAssignment />} />
         <Route path="analysis" element={<Analysis />} />
+        <Route path="management" element={<Management />} />
       </Route>
       
       {/* Coach routes */}

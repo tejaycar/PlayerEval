@@ -11,10 +11,26 @@ export default function Results() {
   const [sortBy, setSortBy] = useState<SortField>('normalizedTotal');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const [positionFilter, setPositionFilter] = useState<string>('');
+  const [disabled, setDisabled] = useState(false);
 
   useEffect(() => {
-    loadResults();
+    checkVisibilityAndLoad();
   }, []);
+
+  const checkVisibilityAndLoad = async () => {
+    try {
+      const settings = await team.getSettings();
+      if (!settings.coachResultsVisible) {
+        setDisabled(true);
+        setLoading(false);
+        return;
+      }
+      await loadResults();
+    } catch (err: any) {
+      setError(err.message);
+      setLoading(false);
+    }
+  };
 
   const loadResults = async () => {
     try {
@@ -86,6 +102,17 @@ export default function Results() {
   );
 
   if (loading) return <div className="text-center py-8">Loading results...</div>;
+
+  if (disabled) {
+    return (
+      <div className="text-center py-12">
+        <div className="bg-gray-50 border border-gray-200 rounded-lg p-8 max-w-md mx-auto">
+          <h3 className="text-lg font-semibold text-gray-700 mb-2">Results Not Available</h3>
+          <p className="text-gray-500">Results are not currently available. Your lead has not enabled this view.</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div>
