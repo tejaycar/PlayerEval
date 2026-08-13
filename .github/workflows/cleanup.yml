@@ -19,22 +19,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci
-
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: us-east-2
-
-      - name: Install CDK
-        run: npm install -g aws-cdk
 
       - name: Determine branch name
         id: branch
@@ -71,10 +60,36 @@ jobs:
             echo "exists=false" >> $GITHUB_OUTPUT
           fi
 
-      - name: Destroy CDK Stack
+      - name: Delete CloudFormation stack
         if: steps.check.outputs.exists == 'true'
-        working-directory: packages/infra
-        env:
-          BRANCH_NAME: ${{ steps.branch.outputs.name }}
         run: |
-          cdk destroy --force "${{ steps.stack.outputs.stack_name }}"
+          STACK_NAME="${{ steps.stack.outputs.stack_name }}"
+          echo "Requesting deletion of stack: $STACK_NAME"
+          aws cloudformation delete-stack --stack-name "$STACK_NAME"
+
+          echo "Waiting for stack deletion to complete..."
+          if aws cloudformation wait stack-delete-complete --stack-name "$STACK_NAME" 2>&1; then
+            echo "Stack $STACK_NAME deleted successfully."
+          else
+            # Check if deletion failed due to DynamoDB delete protection
+            STATUS=$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --query "Stacks[0].StackStatus" --output text 2>/dev/null || echo "STACK_GONE")
+            if [ "$STATUS" = "DELETE_FAILED" ]; then
+              REASON=$(aws cloudformation describe-stack-events \
+                --stack-name "$STACK_NAME" \
+                --query "StackEvents[?ResourceStatus=='DELETE_FAILED'].ResourceStatusReason" \
+                --output text 2>/dev/null || echo "")
+              echo "Stack deletion failed. Reason: $REASON"
+              if echo "$REASON" | grep -qi "cannot be deleted.*protection\|delete protection\|DeletionProtection"; then
+                echo "Deletion failed due to DynamoDB delete protection. This is expected and acceptable."
+                exit 0
+              fi
+              echo "::warning::Stack deletion failed for a non-protection reason: $REASON"
+              exit 0
+            elif [ "$STATUS" = "STACK_GONE" ]; then
+              echo "Stack no longer exists (already deleted)."
+              exit 0
+            else
+              echo "::warning::Stack is in status: $STATUS after delete attempt."
+              exit 0
+            fi
+          fi
