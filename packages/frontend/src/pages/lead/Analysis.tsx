@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { evaluations, coaches as coachesApi, team } from '../../api';
+import { evaluations, coaches as coachesApi, players as playersApi, team } from '../../api';
 import type {
   AnalysisResponse,
   NormalizedPlayerScore,
@@ -28,12 +28,14 @@ export default function Analysis() {
   const [excludedCoachIds, setExcludedCoachIds] = useState<string[]>([]);
   const [excludedRatings, setExcludedRatings] = useState<ExcludedRating[]>([]);
   const [coachList, setCoachList] = useState<{ id: string; name: string }[]>([]);
+  const [playerList, setPlayerList] = useState<{ id: string; name: string; number: string }[]>([]);
   const [playerFilter, setPlayerFilter] = useState('');
   const [anonymize, setAnonymize] = useState(true);
   const [exclusionMode, setExclusionMode] = useState<'include_all' | 'exclude_flagged'>('exclude_flagged');
 
   useEffect(() => {
     loadCoaches();
+    loadPlayers();
     loadSavedExclusions();
   }, []);
 
@@ -57,6 +59,15 @@ export default function Analysis() {
       setCoachList(data.coaches.map((c: any) => ({ id: c.id, name: c.name })));
     } catch (err: any) {
       setError(err.message);
+    }
+  };
+
+  const loadPlayers = async () => {
+    try {
+      const data = await playersApi.list();
+      setPlayerList(data.players.map((p: any) => ({ id: p.id, name: p.name, number: p.number })));
+    } catch (err: any) {
+      // Non-critical - exclusion tab will still work from analysis data
     }
   };
 
@@ -362,6 +373,7 @@ export default function Analysis() {
             <ExclusionsTab
               reliability={unfilteredReliability}
               coaches={anonymize ? coachList.map(c => ({ id: c.id, name: coachNameMap.get(c.id) || c.name })) : coachList}
+              players={playerList}
               excludedRatings={excludedRatings}
               onExcludedRatingsChange={handleExcludedRatingsChange}
             />

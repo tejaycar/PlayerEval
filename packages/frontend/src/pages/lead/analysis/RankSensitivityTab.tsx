@@ -14,20 +14,32 @@ interface Props {
   getCoachDisplayName: (coachId: string, realName: string) => string;
 }
 
+interface RankImpact {
+  playerId: string;
+  playerName: string;
+  playerNumber: string;
+  rank: number;
+  baseRank: number;
+  delta: number;
+}
+
 interface LocoResult {
-  coachId: string;
-  coachName: string;
-  /** Rankings when this coach is removed */
-  rankings: { playerId: string; playerName: string; playerNumber: string; rank: number; baseRank: number; delta: number }[];
+  /** Coach IDs in this combination */
+  coachIds: string[];
+  /** Rankings when these coaches are removed */
+  rankings: RankImpact[];
   /** Spearman rank correlation with base ranking */
   rankCorrelation: number;
   /** Max rank shift for any player */
   maxShift: number;
   /** Average absolute rank shift */
   avgAbsShift: number;
+  /** Players with rank shift > 3 */
+  significantShifts: RankImpact[];
 }
 
 type ViewMode = 'summary' | 'heatmap' | 'outliers';
+type ComboLevel = 1 | 2 | 3;
 
 export default function RankSensitivityTab({
   analysis,
@@ -37,10 +49,31 @@ export default function RankSensitivityTab({
   getCoachDisplayName,
 }: Props) {
   const [locoResults, setLocoResults] = useState<LocoResult[]>([]);
+  const [comboResults2, setComboResults2] = useState<LocoResult[]>([]);
+  const [comboResults3, setComboResults3] = useState<LocoResult[]>([]);
   const [loading, setLoading] = useState(false);
-  const [computed, setComputed] = useState(false);
+  const [computed, setComputed] = useState<Set<ComboLevel>>(new Set());
   const [viewMode, setViewMode] = useState<ViewMode>('summary');
   const [outlierMode, setOutlierMode] = useState<'with' | 'without'>('with');
+  const [expandedRow, setExpandedRow] = useState<string | null>(null);
+  const [activeComboLevel, setActiveComboLevel] = useState<ComboLevel>(1);
+  const [stabilityLevel, setStabilityLevel] = useState<ComboLevel>(1);
+
+  // Map coach IDs to names for display
+  const coachNameMap = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const c of coaches) {
+      map.set(c.id, c.name);
+    }
+    return map;
+  }, [coaches]);
+
+  /** Get display label for a combination of coach IDs, respecting anonymization */
+  const getComboLabel = (coachIds: string[]): string => {
+    return coachIds
+      .map((id) => getCoachDisplayName(id, coachNameMap.get(id) || 'Unknown'))
+      .join(' + ');
+  };
 
   // Base rankings from the current analysis
   const baseRankings = useMemo(() => {
@@ -65,63 +98,123 @@ export default function RankSensitivityTab({
     return coaches.filter((c) => !excludedSet.has(c.id));
   }, [coaches, currentExcludedCoachIds]);
 
-  // Run LOCO analysis
-  const runLocoAnalysis = async () => {
+  // Generate combinations of given size
+  function combinations<T>(arr: T[], size: number): T[][] {
+    if (size === 1) return arr.map((x) => [x]);
+    const result: T[][] = [];
+    for (let i = 0; i <= arr.length - size; i++) {
+      const rest = combinations(arr.slice(i + 1), size - 1);
+      for (const combo of rest) {
+        result.push([arr[i], ...combo]);
+      }
+    }
+    return result;
+  }
+
+  // Compute result for a set of excluded coach IDs
+  const computeForCombo = async (coachCombo: { id: string; name: string }[]): Promise<LocoResult | null> => {
+    const excludeIds = [...currentExcludedCoachIds, ...coachCombo.map((c) => c.id)];
+    const locoAnalysis = await getAnalysisForExclusion(excludeIds);
+    if (!locoAnalysis) return null;
+
+    const rankings: RankImpact[] = locoAnalysis.playerRankings.map((p, idx) => {
+      const baseRank = baseRankMap.get(p.playerId) || 0;
+      return {
+        playerId: p.playerId,
+        playerName: p.playerName,
+        playerNumber: p.playerNumber,
+        rank: idx + 1,
+        baseRank,
+        delta: (idx + 1) - baseRank,
+      };
+    });
+
+    const rankCorrelation = spearmanRho(
+      rankings.map((r) => r.baseRank),
+      rankings.map((r) => r.rank)
+    );
+
+    const absDeltas = rankings.map((r) => Math.abs(r.delta));
+    const maxShift = Math.max(...absDeltas, 0);
+    const avgAbsShift = absDeltas.length > 0 ? absDeltas.reduce((s, v) => s + v, 0) / absDeltas.length : 0;
+    const significantShifts = rankings.filter((r) => Math.abs(r.delta) > 3)
+      .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta));
+
+    return {
+      coachIds: coachCombo.map((c) => c.id),
+      rankings,
+      rankCorrelation: Math.round(rankCorrelation * 1000) / 1000,
+      maxShift,
+      avgAbsShift: Math.round(avgAbsShift * 100) / 100,
+      significantShifts,
+    };
+  };
+
+  // Run LOCO analysis for a given combo level
+  const runLocoAnalysis = async (level: ComboLevel) => {
     setLoading(true);
+    const combos = combinations(activeCoaches, level);
     const results: LocoResult[] = [];
 
-    for (const coach of activeCoaches) {
-      // Exclude this coach on top of any already-excluded coaches
-      const excludeIds = [...currentExcludedCoachIds, coach.id];
-      const locoAnalysis = await getAnalysisForExclusion(excludeIds);
-
-      if (!locoAnalysis) continue;
-
-      const locoRankings = locoAnalysis.playerRankings.map((p, idx) => {
-        const baseRank = baseRankMap.get(p.playerId) || 0;
-        return {
-          playerId: p.playerId,
-          playerName: p.playerName,
-          playerNumber: p.playerNumber,
-          rank: idx + 1,
-          baseRank,
-          delta: (idx + 1) - baseRank,
-        };
-      });
-
-      // Compute rank correlation with base
-      const rankCorrelation = spearmanRho(
-        locoRankings.map((r) => r.baseRank),
-        locoRankings.map((r) => r.rank)
-      );
-
-      const absDeltas = locoRankings.map((r) => Math.abs(r.delta));
-      const maxShift = Math.max(...absDeltas, 0);
-      const avgAbsShift = absDeltas.length > 0 ? absDeltas.reduce((s, v) => s + v, 0) / absDeltas.length : 0;
-
-      results.push({
-        coachId: coach.id,
-        coachName: getCoachDisplayName(coach.id, coach.name),
-        rankings: locoRankings,
-        rankCorrelation: Math.round(rankCorrelation * 1000) / 1000,
-        maxShift,
-        avgAbsShift: Math.round(avgAbsShift * 100) / 100,
-      });
+    for (const combo of combos) {
+      const result = await computeForCombo(combo);
+      if (result) results.push(result);
     }
 
     // Sort by impact (lowest correlation = most impact)
     results.sort((a, b) => a.rankCorrelation - b.rankCorrelation);
 
-    setLocoResults(results);
-    setComputed(true);
+    if (level === 1) setLocoResults(results);
+    else if (level === 2) setComboResults2(results);
+    else if (level === 3) setComboResults3(results);
+
+    setComputed((prev) => new Set([...prev, level]));
     setLoading(false);
+  };
+
+  // Get results for the active combo level in Coach Impact view
+  const activeResults = useMemo(() => {
+    if (activeComboLevel === 1) return locoResults;
+    if (activeComboLevel === 2) return comboResults2;
+    return comboResults3;
+  }, [activeComboLevel, locoResults, comboResults2, comboResults3]);
+
+  // Get cumulative results for Player Stability view
+  // L1CO = just single-coach results
+  // L2CO = single + 2-coach results
+  // L3CO = single + 2-coach + 3-coach results
+  const stabilityResults = useMemo(() => {
+    const results: LocoResult[] = [...locoResults];
+    if (stabilityLevel >= 2) results.push(...comboResults2);
+    if (stabilityLevel >= 3) results.push(...comboResults3);
+    return results;
+  }, [stabilityLevel, locoResults, comboResults2, comboResults3]);
+
+  // Highest computed level
+  const highestComputed = useMemo(() => {
+    if (computed.has(3)) return 3;
+    if (computed.has(2)) return 2;
+    if (computed.has(1)) return 1;
+    return 0;
+  }, [computed]);
+
+  // Combo count info
+  const comboCount = (level: ComboLevel) => {
+    const n = activeCoaches.length;
+    if (level === 1) return n;
+    if (level === 2) return (n * (n - 1)) / 2;
+    return (n * (n - 1) * (n - 2)) / 6;
+  };
+
+  // Toggle detail row
+  const toggleExpand = (key: string) => {
+    setExpandedRow((prev) => (prev === key ? null : key));
   };
 
   // Outlier-removed rankings
   const outlierRemovedRankings = useMemo(() => {
     if (!analysis.boxPlots) return [];
 
-    // For each player, compute normalizedTotal without outlier data points
     return analysis.boxPlots
       .map((bp) => {
         const nonOutlierPoints = bp.dataPoints.filter(
@@ -149,13 +242,13 @@ export default function RankSensitivityTab({
       }));
   }, [analysis, baseRankMap]);
 
-  // Per-player stability: rank range across all LOCO permutations
+  // Per-player stability based on selected stability level (cumulative)
   const playerStability = useMemo(() => {
-    if (!computed || locoResults.length === 0) return [];
+    if (stabilityResults.length === 0) return [];
 
     const playerRanks = new Map<string, number[]>();
 
-    for (const result of locoResults) {
+    for (const result of stabilityResults) {
       for (const r of result.rankings) {
         const arr = playerRanks.get(r.playerId) || [];
         arr.push(r.rank);
@@ -174,15 +267,17 @@ export default function RankSensitivityTab({
         rankRange: maxRank - minRank,
       };
     }).sort((a, b) => b.rankRange - a.rankRange);
-  }, [computed, locoResults, baseRankings]);
+  }, [stabilityResults, baseRankings]);
+
+  const isAnyComputed = computed.size > 0;
 
   return (
     <div>
       <div className="mb-4">
         <h3 className="text-lg font-semibold mb-2">Rank Sensitivity Analysis</h3>
         <p className="text-sm text-gray-600 mb-4">
-          How stable are player rankings? This analysis removes one coach at a time (LOCO — Leave-One-Coach-Out)
-          to show which coaches have the most influence on final rankings, and which players' positions are most volatile.
+          How stable are player rankings? This analysis removes coaches (LOCO — Leave-One-Coach-Out)
+          to show which coaches or combinations have the most influence on final rankings, and which players' positions are most volatile.
         </p>
       </div>
 
@@ -207,144 +302,298 @@ export default function RankSensitivityTab({
         ))}
       </div>
 
-      {/* LOCO Computation */}
-      {(viewMode === 'summary' || viewMode === 'heatmap') && !computed && (
-        <div className="text-center py-8">
-          <button
-            onClick={runLocoAnalysis}
-            disabled={loading}
-            className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
-          >
-            {loading ? 'Computing...' : `Run LOCO Analysis (${activeCoaches.length} coaches)`}
-          </button>
-          <p className="text-xs text-gray-400 mt-2">
-            This re-computes rankings {activeCoaches.length} times, once for each coach removed.
-          </p>
-        </div>
-      )}
-
-      {loading && (
-        <div className="text-center py-4 text-gray-400">
-          Computing LOCO permutations...
-        </div>
-      )}
-
       {/* === SUMMARY VIEW: Coach Impact === */}
-      {viewMode === 'summary' && computed && (
+      {viewMode === 'summary' && (
         <div>
-          <h4 className="text-sm font-semibold mb-3 text-gray-700">
-            Coach Influence on Rankings (sorted by impact)
-          </h4>
-          <table className="w-full bg-white rounded-lg shadow-sm border text-sm">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">Coach</th>
-                <th className="px-3 py-2 text-center text-xs font-medium text-gray-500">
-                  Rank Correlation
-                  <span className="text-gray-400 text-xs ml-1 cursor-help" title="Spearman correlation between base rankings and rankings without this coach. 1.0 = no change, lower = more influence.">ⓘ</span>
-                </th>
-                <th className="px-3 py-2 text-center text-xs font-medium text-gray-500">
-                  Avg Shift
-                  <span className="text-gray-400 text-xs ml-1 cursor-help" title="Average number of rank positions players move when this coach is removed. Higher = this coach's ratings create more movement.">ⓘ</span>
-                </th>
-                <th className="px-3 py-2 text-center text-xs font-medium text-gray-500">
-                  Max Shift
-                  <span className="text-gray-400 text-xs ml-1 cursor-help" title="Largest rank change for any single player when this coach is removed. A high number means at least one player's position depends heavily on this coach.">ⓘ</span>
-                </th>
-                <th className="px-3 py-2 text-center text-xs font-medium text-gray-500">Impact</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200">
-              {locoResults.map((result) => (
-                <tr key={result.coachId} className="hover:bg-gray-50">
-                  <td className="px-3 py-2 font-medium">{result.coachName}</td>
-                  <td className="px-3 py-2 text-center">
-                    <span className={result.rankCorrelation < 0.95 ? 'text-amber-600 font-medium' : 'text-gray-600'}>
-                      {result.rankCorrelation.toFixed(3)}
-                    </span>
-                  </td>
-                  <td className="px-3 py-2 text-center text-gray-600">{result.avgAbsShift.toFixed(1)}</td>
-                  <td className="px-3 py-2 text-center">
-                    <span className={result.maxShift >= 3 ? 'text-red-600 font-medium' : 'text-gray-600'}>
-                      {result.maxShift}
-                    </span>
-                  </td>
-                  <td className="px-3 py-2 text-center">
-                    <ImpactBar correlation={result.rankCorrelation} />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          {/* Combo level selector */}
+          <div className="flex items-center gap-2 mb-4">
+            <span className="text-sm text-gray-600">Combination size:</span>
+            {([1, 2, 3] as ComboLevel[]).map((level) => (
+              <button
+                key={level}
+                onClick={() => setActiveComboLevel(level)}
+                className={`px-3 py-1.5 text-sm rounded border ${
+                  activeComboLevel === level
+                    ? 'bg-blue-600 text-white border-blue-600'
+                    : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                }`}
+              >
+                {level === 1 ? '1 Coach' : `${level} Coaches`}
+                <span className="ml-1 text-xs opacity-75">({comboCount(level)})</span>
+              </button>
+            ))}
+          </div>
 
-          {locoResults.length > 0 && (
-            <div className="mt-3 text-xs text-gray-400">
-              Interpretation: A rank correlation of 1.000 means removing the coach doesn't change rankings at all.
-              Values below 0.95 indicate meaningful influence. Below 0.90 = strong "swing vote" coach.
+          {/* Run button if this level hasn't been computed */}
+          {!computed.has(activeComboLevel) && (
+            <div className="text-center py-8">
+              <button
+                onClick={() => runLocoAnalysis(activeComboLevel)}
+                disabled={loading}
+                className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+              >
+                {loading ? 'Computing...' : `Run ${activeComboLevel === 1 ? 'L1CO' : `L${activeComboLevel}CO`} Analysis (${comboCount(activeComboLevel)} permutations)`}
+              </button>
+              <p className="text-xs text-gray-400 mt-2">
+                This re-computes rankings {comboCount(activeComboLevel)} times
+                {activeComboLevel > 1 && ', one for each combination of coaches removed'}.
+                {activeComboLevel === 3 && comboCount(3) > 50 && (
+                  <span className="text-amber-500 ml-1"> This may take a moment.</span>
+                )}
+              </p>
+            </div>
+          )}
+
+          {loading && (
+            <div className="text-center py-4 text-gray-400">
+              Computing L{activeComboLevel}CO permutations...
+            </div>
+          )}
+
+          {/* Results table */}
+          {computed.has(activeComboLevel) && !loading && (
+            <div>
+              <h4 className="text-sm font-semibold mb-3 text-gray-700">
+                {activeComboLevel === 1 ? 'Single Coach' : `${activeComboLevel}-Coach Combination`} Influence on Rankings (sorted by impact)
+              </h4>
+              <table className="w-full bg-white rounded-lg shadow-sm border text-sm">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500">
+                      {activeComboLevel === 1 ? 'Coach' : 'Coaches'}
+                    </th>
+                    <th className="px-3 py-2 text-center text-xs font-medium text-gray-500">
+                      Rank Correlation
+                      <span className="text-gray-400 text-xs ml-1 cursor-help" title="Spearman correlation between base rankings and rankings without these coach(es). 1.0 = no change, lower = more influence.">ⓘ</span>
+                    </th>
+                    <th className="px-3 py-2 text-center text-xs font-medium text-gray-500">
+                      Avg Shift
+                      <span className="text-gray-400 text-xs ml-1 cursor-help" title="Average number of rank positions players move when these coach(es) are removed.">ⓘ</span>
+                    </th>
+                    <th className="px-3 py-2 text-center text-xs font-medium text-gray-500">
+                      Max Shift
+                      <span className="text-gray-400 text-xs ml-1 cursor-help" title="Largest rank change for any single player when these coach(es) are removed.">ⓘ</span>
+                    </th>
+                    <th className="px-3 py-2 text-center text-xs font-medium text-gray-500">Impact</th>
+                    <th className="px-3 py-2 text-center text-xs font-medium text-gray-500">Details</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200">
+                  {activeResults.map((result) => {
+                    const rowKey = result.coachIds.join('|');
+                    const isExpanded = expandedRow === rowKey;
+                    return (
+                      <React.Fragment key={rowKey}>
+                        <tr className="hover:bg-gray-50">
+                          <td className="px-3 py-2 font-medium">{getComboLabel(result.coachIds)}</td>
+                          <td className="px-3 py-2 text-center">
+                            <span className={result.rankCorrelation < 0.95 ? 'text-amber-600 font-medium' : 'text-gray-600'}>
+                              {result.rankCorrelation.toFixed(3)}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2 text-center text-gray-600">{result.avgAbsShift.toFixed(1)}</td>
+                          <td className="px-3 py-2 text-center">
+                            <span className={result.maxShift >= 3 ? 'text-red-600 font-medium' : 'text-gray-600'}>
+                              {result.maxShift}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2 text-center">
+                            <ImpactBar correlation={result.rankCorrelation} />
+                          </td>
+                          <td className="px-3 py-2 text-center">
+                            {result.significantShifts.length > 0 ? (
+                              <button
+                                onClick={() => toggleExpand(rowKey)}
+                                className="text-xs text-blue-600 hover:text-blue-800 underline"
+                              >
+                                {isExpanded ? 'hide' : `${result.significantShifts.length} player${result.significantShifts.length > 1 ? 's' : ''}`}
+                              </button>
+                            ) : (
+                              <span className="text-xs text-gray-400">—</span>
+                            )}
+                          </td>
+                        </tr>
+                        {/* Expanded detail row */}
+                        {isExpanded && (
+                          <tr>
+                            <td colSpan={6} className="px-4 py-3 bg-blue-50 border-l-4 border-blue-300">
+                              <p className="text-xs font-semibold text-gray-600 mb-2">
+                                Players shifted more than 3 rank positions:
+                              </p>
+                              <table className="w-full text-xs">
+                                <thead>
+                                  <tr className="text-gray-500">
+                                    <th className="text-left pb-1">#</th>
+                                    <th className="text-left pb-1">Player</th>
+                                    <th className="text-center pb-1">Base Rank</th>
+                                    <th className="text-center pb-1">New Rank</th>
+                                    <th className="text-center pb-1">Shift</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {result.significantShifts.map((shift) => (
+                                    <tr key={shift.playerId} className="border-t border-blue-100">
+                                      <td className="py-1 text-gray-500">{shift.playerNumber}</td>
+                                      <td className="py-1 font-medium">{shift.playerName}</td>
+                                      <td className="py-1 text-center text-gray-600">{shift.baseRank}</td>
+                                      <td className="py-1 text-center text-gray-600">{shift.rank}</td>
+                                      <td className="py-1 text-center">
+                                        <RankDelta delta={shift.delta} />
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
+                    );
+                  })}
+                </tbody>
+              </table>
+
+              {activeResults.length > 0 && (
+                <div className="mt-3 text-xs text-gray-400">
+                  Interpretation: A rank correlation of 1.000 means removing the coach(es) doesn't change rankings at all.
+                  Values below 0.95 indicate meaningful influence. Below 0.90 = strong "swing vote" combination.
+                  Click "Details" to see which players shift more than 3 rank positions.
+                </div>
+              )}
             </div>
           )}
         </div>
       )}
 
       {/* === HEATMAP VIEW: Player Stability === */}
-      {viewMode === 'heatmap' && computed && (
+      {viewMode === 'heatmap' && (
         <div>
-          <h4 className="text-sm font-semibold mb-3 text-gray-700">
-            Player Rank Stability (sorted by volatility)
-          </h4>
-          <p className="text-xs text-gray-500 mb-3">
-            Shows the range of possible ranks for each player across all LOCO permutations.
-            Narrow bands = stable position; wide bands = sensitive to who evaluates them.
-          </p>
+          {!isAnyComputed && (
+            <div className="text-center py-8">
+              <button
+                onClick={() => runLocoAnalysis(1)}
+                disabled={loading}
+                className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+              >
+                {loading ? 'Computing...' : `Run L1CO Analysis (${activeCoaches.length} coaches)`}
+              </button>
+              <p className="text-xs text-gray-400 mt-2">
+                This re-computes rankings {activeCoaches.length} times, once for each coach removed.
+              </p>
+            </div>
+          )}
 
-          <div className="space-y-1.5">
-            {playerStability.map((player) => {
-              const totalPlayers = baseRankings.length;
-              return (
-                <div key={player.playerId} className="flex items-center gap-3">
-                  <div className="w-40 text-sm text-right flex-shrink-0">
-                    <span className="text-gray-500">#{player.playerNumber}</span>{' '}
-                    <span className="font-medium">{player.playerName}</span>
-                  </div>
+          {loading && (
+            <div className="text-center py-4 text-gray-400">
+              Computing LOCO permutations...
+            </div>
+          )}
 
-                  {/* Rank range visualization */}
-                  <div className="flex-1 relative h-6 bg-gray-50 rounded border border-gray-200">
-                    {/* Range bar */}
-                    <div
-                      className={`absolute top-1/2 h-3 rounded ${
-                        player.rankRange >= 4 ? 'bg-red-300' : player.rankRange >= 2 ? 'bg-amber-200' : 'bg-green-200'
-                      }`}
-                      style={{
-                        left: `${((player.minRank - 1) / totalPlayers) * 100}%`,
-                        width: `${Math.max(((player.rankRange + 1) / totalPlayers) * 100, 1)}%`,
-                        transform: 'translateY(-50%)',
-                      }}
-                    />
-                    {/* Base rank marker */}
-                    <div
-                      className="absolute top-1/2 w-2 h-4 bg-blue-600 rounded-sm"
-                      style={{
-                        left: `${((player.rank - 1) / totalPlayers) * 100}%`,
-                        transform: 'translate(-50%, -50%)',
-                      }}
-                    />
-                  </div>
-
-                  {/* Stats */}
-                  <div className="w-48 text-xs text-gray-500 flex-shrink-0">
-                    Rank {player.rank} (range: {player.minRank}–{player.maxRank}, Δ{player.rankRange})
-                  </div>
+          {isAnyComputed && !loading && (
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <h4 className="text-sm font-semibold text-gray-700">
+                  Player Rank Stability (sorted by volatility)
+                </h4>
+                {/* L1CO / L2CO / L3CO toggle */}
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-gray-500">View:</span>
+                  {([1, 2, 3] as ComboLevel[]).map((level) => {
+                    const isAvailable = level === 1 ? computed.has(1) : level === 2 ? computed.has(2) : computed.has(3);
+                    return (
+                      <button
+                        key={level}
+                        onClick={() => {
+                          if (isAvailable) {
+                            setStabilityLevel(level);
+                          } else {
+                            // Compute the missing level first
+                            runLocoAnalysis(level);
+                            setStabilityLevel(level);
+                          }
+                        }}
+                        disabled={loading}
+                        className={`px-2.5 py-1 text-xs rounded border ${
+                          stabilityLevel === level
+                            ? 'bg-blue-600 text-white border-blue-600'
+                            : isAvailable
+                            ? 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                            : 'bg-gray-50 text-gray-400 border-gray-200 hover:bg-gray-100'
+                        }`}
+                        title={
+                          level === 1
+                            ? 'Single coach removal only'
+                            : level === 2
+                            ? 'Includes single + 2-coach combinations'
+                            : 'Includes single + 2-coach + 3-coach combinations'
+                        }
+                      >
+                        L{level}CO
+                        {!isAvailable && ' ⟳'}
+                      </button>
+                    );
+                  })}
                 </div>
-              );
-            })}
-          </div>
+              </div>
 
-          {playerStability.length > 0 && (
-            <div className="mt-3 flex items-center gap-4 text-xs text-gray-400">
-              <span className="flex items-center gap-1"><span className="w-3 h-3 bg-green-200 rounded inline-block"></span> Stable (Δ0–1)</span>
-              <span className="flex items-center gap-1"><span className="w-3 h-3 bg-amber-200 rounded inline-block"></span> Moderate (Δ2–3)</span>
-              <span className="flex items-center gap-1"><span className="w-3 h-3 bg-red-300 rounded inline-block"></span> Volatile (Δ4+)</span>
-              <span className="flex items-center gap-1"><span className="w-2 h-3 bg-blue-600 rounded-sm inline-block"></span> Current rank</span>
+              <p className="text-xs text-gray-500 mb-3">
+                Shows the range of possible ranks for each player across
+                {stabilityLevel === 1 && ' all single-coach removals (L1CO).'}
+                {stabilityLevel === 2 && ' single + 2-coach combo removals (L1CO + L2CO).'}
+                {stabilityLevel === 3 && ' single + 2-coach + 3-coach combo removals (L1CO + L2CO + L3CO).'}
+                {' '}Narrow bands = stable position; wide bands = sensitive to evaluator composition.
+              </p>
+
+              <div className="space-y-1.5">
+                {playerStability.map((player) => {
+                  const totalPlayers = baseRankings.length;
+                  return (
+                    <div key={player.playerId} className="flex items-center gap-3">
+                      <div className="w-40 text-sm text-right flex-shrink-0">
+                        <span className="text-gray-500">#{player.playerNumber}</span>{' '}
+                        <span className="font-medium">{player.playerName}</span>
+                      </div>
+
+                      {/* Rank range visualization */}
+                      <div className="flex-1 relative h-6 bg-gray-50 rounded border border-gray-200">
+                        {/* Range bar */}
+                        <div
+                          className={`absolute top-1/2 h-3 rounded ${
+                            player.rankRange >= 4 ? 'bg-red-300' : player.rankRange >= 2 ? 'bg-amber-200' : 'bg-green-200'
+                          }`}
+                          style={{
+                            left: `${((player.minRank - 1) / totalPlayers) * 100}%`,
+                            width: `${Math.max(((player.rankRange + 1) / totalPlayers) * 100, 1)}%`,
+                            transform: 'translateY(-50%)',
+                          }}
+                        />
+                        {/* Base rank marker */}
+                        <div
+                          className="absolute top-1/2 w-2 h-4 bg-blue-600 rounded-sm"
+                          style={{
+                            left: `${((player.rank - 1) / totalPlayers) * 100}%`,
+                            transform: 'translate(-50%, -50%)',
+                          }}
+                        />
+                      </div>
+
+                      {/* Stats */}
+                      <div className="w-48 text-xs text-gray-500 flex-shrink-0">
+                        Rank {player.rank} (range: {player.minRank}–{player.maxRank}, Δ{player.rankRange})
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {playerStability.length > 0 && (
+                <div className="mt-3 flex items-center gap-4 text-xs text-gray-400">
+                  <span className="flex items-center gap-1"><span className="w-3 h-3 bg-green-200 rounded inline-block"></span> Stable (Δ0–1)</span>
+                  <span className="flex items-center gap-1"><span className="w-3 h-3 bg-amber-200 rounded inline-block"></span> Moderate (Δ2–3)</span>
+                  <span className="flex items-center gap-1"><span className="w-3 h-3 bg-red-300 rounded inline-block"></span> Volatile (Δ4+)</span>
+                  <span className="flex items-center gap-1"><span className="w-2 h-3 bg-blue-600 rounded-sm inline-block"></span> Current rank</span>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -455,9 +704,8 @@ export default function RankSensitivityTab({
 
 /** Visual impact bar based on rank correlation */
 function ImpactBar({ correlation }: { correlation: number }) {
-  // Impact is 1 - correlation (0 = no impact, 1 = total reshuffling)
   const impact = Math.max(0, 1 - correlation);
-  const widthPct = Math.min(impact * 500, 100); // scale up for visibility
+  const widthPct = Math.min(impact * 500, 100);
 
   let color: string;
   if (correlation >= 0.98) color = 'bg-green-400';

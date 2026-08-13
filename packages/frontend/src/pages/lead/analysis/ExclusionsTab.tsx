@@ -4,6 +4,8 @@ import type { CoachReliabilityMetrics } from '@player-eval/shared';
 interface Props {
   reliability: CoachReliabilityMetrics[];
   coaches: { id: string; name: string }[];
+  /** Full player list so we can show pre-exclusion checkboxes for un-rated cells */
+  players: { id: string; name: string; number: string }[];
   excludedRatings: Array<{ coachId: string; playerId: string }>;
   onExcludedRatingsChange: (ratings: Array<{ coachId: string; playerId: string }>) => void;
 }
@@ -14,15 +16,21 @@ interface PlayerInfo {
   playerNumber: string;
 }
 
-export default function ExclusionsTab({ reliability, coaches, excludedRatings, onExcludedRatingsChange }: Props) {
+export default function ExclusionsTab({ reliability, coaches, players, excludedRatings, onExcludedRatingsChange }: Props) {
   // Build a map of coachId -> playerId -> deviation value
   const deviationMap = new Map<string, Map<string, number>>();
   const playerMap = new Map<string, PlayerInfo>();
+
+  // First seed playerMap from the full players list
+  for (const p of players) {
+    playerMap.set(p.id, { playerId: p.id, playerName: p.name, playerNumber: p.number });
+  }
 
   for (const coach of reliability) {
     const playerDevMap = new Map<string, number>();
     for (const pd of coach.playerDeviations) {
       playerDevMap.set(pd.playerId, pd.deviation);
+      // Also add to playerMap in case analysis returned names not in the player list
       if (!playerMap.has(pd.playerId)) {
         playerMap.set(pd.playerId, {
           playerId: pd.playerId,
@@ -75,6 +83,7 @@ export default function ExclusionsTab({ reliability, coaches, excludedRatings, o
         <span className="inline-block ml-2 px-2 py-0.5 bg-green-100 rounded text-xs">low (&le;1.5)</span>
         <span className="inline-block ml-1 px-2 py-0.5 bg-yellow-100 rounded text-xs">moderate (&le;3)</span>
         <span className="inline-block ml-1 px-2 py-0.5 bg-red-100 rounded text-xs">high (&gt;3)</span>
+        <span className="inline-block ml-1 px-2 py-0.5 bg-purple-50 border border-purple-200 rounded text-xs">pre-excluded (no rating yet)</span>
       </p>
 
       <div className="overflow-x-auto">
@@ -100,14 +109,24 @@ export default function ExclusionsTab({ reliability, coaches, excludedRatings, o
                 {sortedCoaches.map((coach) => {
                   const devMap = deviationMap.get(coach.id);
                   const dev = devMap?.get(player.playerId);
+                  const excluded = isExcluded(coach.id, player.playerId);
                   if (dev === undefined) {
+                    // No rating exists — show pre-exclusion checkbox
                     return (
-                      <td key={coach.id} className="px-2 py-1 text-center text-gray-300">
-                        —
+                      <td key={coach.id} className={`px-2 py-1 text-center ${excluded ? 'bg-purple-50' : ''}`}>
+                        <div className="flex flex-col items-center gap-0.5">
+                          <span className="text-xs text-gray-300">—</span>
+                          <input
+                            type="checkbox"
+                            checked={excluded}
+                            onChange={() => toggleExclusion(coach.id, player.playerId)}
+                            className="w-3 h-3 rounded border-gray-300 accent-purple-500"
+                            title={excluded ? 'Pre-excluded: click to remove exclusion' : 'Pre-exclude: will auto-exclude if rated later'}
+                          />
+                        </div>
                       </td>
                     );
                   }
-                  const excluded = isExcluded(coach.id, player.playerId);
                   return (
                     <td key={coach.id} className={`px-2 py-1 text-center ${getCellColor(dev)}`}>
                       <div className="flex flex-col items-center gap-0.5">
