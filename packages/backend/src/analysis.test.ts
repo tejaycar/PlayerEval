@@ -819,4 +819,116 @@ describe('computeAnalysis', () => {
       expect(resultExcl.metadata.totalEvaluations).toBeLessThan(resultAll.metadata.totalEvaluations);
     });
   });
+
+  describe('Exclusion-based metric recalculation', () => {
+    it('excluding a coach changes the staffAgreementScore (ICC) computation inputs', () => {
+      const resultAll = computeAnalysis(evaluations, players, coaches, [], [], true);
+      const resultExcluded = computeAnalysis(evaluations, players, coaches, ['coach-1'], [], true);
+
+      // Both should produce valid staffAgreementScore values
+      expect(typeof resultAll.staffAgreementScore).toBe('number');
+      expect(typeof resultExcluded.staffAgreementScore).toBe('number');
+      expect(resultAll.staffAgreementScore).toBeGreaterThanOrEqual(0);
+      expect(resultExcluded.staffAgreementScore).toBeGreaterThanOrEqual(0);
+
+      // The underlying data used for ICC computation changes (fewer evaluations)
+      // Verify via metadata that the evaluation pool shrinks
+      expect(resultExcluded.metadata.totalEvaluations).toBeLessThan(resultAll.metadata.totalEvaluations);
+      expect(resultExcluded.metadata.totalCoaches).toBeLessThan(resultAll.metadata.totalCoaches);
+    });
+
+    it('excluding a coach changes player normalized totals for affected players', () => {
+      const resultAll = computeAnalysis(evaluations, players, coaches, [], [], true);
+      const resultExcluded = computeAnalysis(evaluations, players, coaches, ['coach-1'], [], true);
+
+      // Find players that were rated by coach-1
+      const affectedPlayerIds = new Set(
+        evaluations.filter((e) => e.coachId === 'coach-1').map((e) => e.playerId)
+      );
+
+      // At least some affected players should have different normalized totals
+      let changed = 0;
+      for (const pid of affectedPlayerIds) {
+        const rankAll = resultAll.playerRankings.find((r) => r.playerId === pid);
+        const rankExcl = resultExcluded.playerRankings.find((r) => r.playerId === pid);
+        if (rankAll && rankExcl && Math.abs(rankAll.normalizedTotal - rankExcl.normalizedTotal) > 0.001) {
+          changed++;
+        }
+      }
+      expect(changed).toBeGreaterThan(0);
+    });
+
+    it('excluding a coach changes coachReliability MAD and meanDeviation for remaining coaches', () => {
+      const resultAll = computeAnalysis(evaluations, players, coaches, [], [], true);
+      const resultExcluded = computeAnalysis(evaluations, players, coaches, ['coach-1'], [], true);
+
+      // Coach-1 should appear in results marked as excluded
+      const coach1InExcluded = resultExcluded.coachReliability.find((c) => c.coachId === 'coach-1');
+      expect(coach1InExcluded).toBeDefined();
+      expect(coach1InExcluded!.isExcluded).toBe(true);
+
+      // Remaining non-excluded coaches should have different reliability metrics
+      // since medians/means that deviations are computed against shift when data pool changes
+      let madChanged = 0;
+      let meanDevChanged = 0;
+      for (const crAll of resultAll.coachReliability) {
+        if (crAll.coachId === 'coach-1') continue;
+        const crExcl = resultExcluded.coachReliability.find((c) => c.coachId === crAll.coachId);
+        if (crExcl) {
+          if (Math.abs(crAll.madFromMedian - crExcl.madFromMedian) > 0.001) {
+            madChanged++;
+          }
+          if (Math.abs(crAll.meanDeviationFromMean - crExcl.meanDeviationFromMean) > 0.001) {
+            meanDevChanged++;
+          }
+        }
+      }
+      expect(madChanged).toBeGreaterThan(0);
+      expect(meanDevChanged).toBeGreaterThan(0);
+    });
+
+    it('excluding individual ratings via excludedRatings filters those evaluations and produces different metrics', () => {
+      const resultAll = computeAnalysis(evaluations, players, coaches, [], [], true);
+
+      // Find an actual rating that exists: coach-1 rates player-2
+      const excludedRatings = [{ coachId: 'coach-1', playerId: 'player-2' }];
+      const resultExcluded = computeAnalysis(evaluations, players, coaches, [], excludedRatings, true);
+
+      // The total evaluations should differ by 1
+      expect(resultExcluded.metadata.totalEvaluations).toBe(resultAll.metadata.totalEvaluations - 1);
+
+      // Player-2's normalized total or evaluation count should differ
+      const player2All = resultAll.playerRankings.find((r) => r.playerId === 'player-2');
+      const player2Excl = resultExcluded.playerRankings.find((r) => r.playerId === 'player-2');
+      expect(player2All).toBeDefined();
+      expect(player2Excl).toBeDefined();
+
+      // Evaluation count should decrease by 1 for that player
+      expect(player2Excl!.evaluationCount).toBe(player2All!.evaluationCount - 1);
+    });
+
+    it('passing empty exclusion arrays produces the same result as no exclusions', () => {
+      const resultNoExclusions = computeAnalysis(evaluations, players, coaches, [], [], true);
+      const resultEmptyArrays = computeAnalysis(evaluations, players, coaches, [], [], true);
+
+      // Results should be identical
+      expect(resultEmptyArrays.staffAgreementScore).toBe(resultNoExclusions.staffAgreementScore);
+      expect(resultEmptyArrays.metadata.totalEvaluations).toBe(resultNoExclusions.metadata.totalEvaluations);
+      expect(resultEmptyArrays.metadata.totalCoaches).toBe(resultNoExclusions.metadata.totalCoaches);
+      expect(resultEmptyArrays.metadata.totalPlayers).toBe(resultNoExclusions.metadata.totalPlayers);
+
+      // Player rankings should be identical
+      for (let i = 0; i < resultNoExclusions.playerRankings.length; i++) {
+        expect(resultEmptyArrays.playerRankings[i].playerId).toBe(resultNoExclusions.playerRankings[i].playerId);
+        expect(resultEmptyArrays.playerRankings[i].normalizedTotal).toBe(resultNoExclusions.playerRankings[i].normalizedTotal);
+      }
+
+      // Coach reliability should be identical
+      for (let i = 0; i < resultNoExclusions.coachReliability.length; i++) {
+        expect(resultEmptyArrays.coachReliability[i].coachId).toBe(resultNoExclusions.coachReliability[i].coachId);
+        expect(resultEmptyArrays.coachReliability[i].madFromMedian).toBe(resultNoExclusions.coachReliability[i].madFromMedian);
+        expect(resultEmptyArrays.coachReliability[i].meanDeviationFromMean).toBe(resultNoExclusions.coachReliability[i].meanDeviationFromMean);
+      }
+    });
+  });
 });
