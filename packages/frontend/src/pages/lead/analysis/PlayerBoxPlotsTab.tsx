@@ -1,6 +1,9 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import type { BoxPlotStats } from '@player-eval/shared';
 
+/** Format number to at most 2 decimal places, no trailing zeros */
+const fmt = (n: number) => +n.toFixed(2);
+
 interface Props {
   boxPlots: BoxPlotStats[];
 }
@@ -227,6 +230,13 @@ export default function PlayerBoxPlotsTab({ boxPlots }: Props) {
         )}
       </div>
 
+      <div className="flex items-center gap-4 text-xs text-gray-400 mb-3">
+        <span className="flex items-center gap-1"><span className="inline-block w-3 h-0.5 bg-blue-700"></span> Median</span>
+        <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 bg-green-600 rotate-45"></span> Mean</span>
+        <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 bg-blue-200 border border-blue-400 rounded-sm"></span> IQR (Q1–Q3)</span>
+        <span className="flex items-center gap-1"><span className="inline-block w-2 h-2 bg-red-500 rounded-full"></span> Outlier</span>
+      </div>
+
       <div className="space-y-2">
         {sorted.map((bp) => (
           <div key={bp.playerId} className="flex items-center gap-3">
@@ -281,6 +291,14 @@ export default function PlayerBoxPlotsTab({ boxPlots }: Props) {
                   transform: 'translate(-50%, -50%)',
                 }}
               />
+              {/* Mean marker (diamond) */}
+              <div
+                className="absolute top-1/2 w-2 h-2 bg-green-600 rotate-45"
+                style={{
+                  left: `${toPercent(bp.mean)}%`,
+                  transform: 'translate(-50%, -50%) rotate(45deg)',
+                }}
+              />
               {/* Outliers */}
               {bp.outliers.map((o, i) => (
                 <div
@@ -296,14 +314,14 @@ export default function PlayerBoxPlotsTab({ boxPlots }: Props) {
 
             {/* Stats */}
             <div className="w-64 text-xs text-gray-500 flex-shrink-0">
-              Mean: {bp.mean}
+              Mean: {fmt(bp.mean)}
               <span className="text-gray-400 text-xs ml-0.5 cursor-help" title="Average of all normalized scores for this player across coaches.">&#9432;</span>
-              {' · '}Med: {bp.median}
+              {' · '}Med: {fmt(bp.median)}
               <span className="text-gray-400 text-xs ml-0.5 cursor-help" title="Median normalized score — the middle value. More robust to outliers than the mean.">&#9432;</span>
-              {' · '}IQR: {bp.iqr}
+              {' · '}IQR: {fmt(bp.iqr)}
               <span className="text-gray-400 text-xs ml-0.5 cursor-help" title="Interquartile range — how spread out the middle 50% of scores are. Higher = more disagreement between coaches.">&#9432;</span>
-              <span className="ml-2 text-gray-400">±{bp.ci95}</span>
-              <span className="text-gray-400 text-xs ml-0.5 cursor-help" title={`95% confidence interval (n=${bp.n}, SEM=${bp.sem}). The true mean score is likely within ±${bp.ci95} of the displayed mean.`}>&#9432;</span>
+              <span className="ml-2 text-gray-400">±{fmt(bp.ci95)}</span>
+              <span className="text-gray-400 text-xs ml-0.5 cursor-help" title={`95% confidence interval (n=${bp.n}, SEM=${fmt(bp.sem)}). The true mean score is likely within ±${fmt(bp.ci95)} of the displayed mean.`}>&#9432;</span>
             </div>
           </div>
         ))}

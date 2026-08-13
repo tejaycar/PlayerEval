@@ -399,7 +399,7 @@ export function computeAnalysis(
       primaryPosition: player.primaryPosition || '',
       secondaryPosition: player.secondaryPosition || '',
       evaluationCount: n,
-      rawTotal: mean(rawPlayerEvals.map((e) => e.totalScore)),
+      rawTotal: round2(mean(rawPlayerEvals.map((e) => e.totalScore))),
       normalizedTotal: round2(avgNormalizedTotal),
       medianTotal: round2(medNormalizedTotal),
       categories: roundRecord(normalizedCategoryAverages) as Record<RatingCategory, number>,
