@@ -537,12 +537,14 @@ describe('computeAnalysis', () => {
       }
     });
 
-    it('coach reliability is only populated when isLead=true', () => {
+    it('coach reliability is populated for both leads and non-leads', () => {
       const resultLead = computeAnalysis(evaluations, players, coaches, [], [], true);
       const resultNonLead = computeAnalysis(evaluations, players, coaches, [], [], false);
 
       expect(resultLead.coachReliability.length).toBeGreaterThan(0);
-      expect(resultNonLead.coachReliability).toHaveLength(0);
+      expect(resultNonLead.coachReliability.length).toBeGreaterThan(0);
+      // Both should return the same number of coach entries
+      expect(resultNonLead.coachReliability.length).toBe(resultLead.coachReliability.length);
     });
 
     it('each coach reliability entry has correct player deviation count', () => {
