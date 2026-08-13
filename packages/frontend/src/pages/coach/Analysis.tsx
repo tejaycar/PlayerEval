@@ -144,7 +144,7 @@ export default function CoachAnalysis() {
       )}
 
       {activeTab === 'coachAnalysis' && (
-        <CoachAnalysisTab reliability={anonymizedReliability} excludedCoachIds={excludedCoachIds} excludedRatings={excludedRatings} />
+        <CoachAnalysisTab reliability={anonymizedReliability} excludedCoachIds={excludedCoachIds} excludedRatings={excludedRatings} currentCoachId={currentUser?.coachId} />
       )}
     </div>
   );

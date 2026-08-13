@@ -5,6 +5,7 @@ interface Props {
   reliability: CoachReliabilityMetrics[];
   excludedCoachIds?: string[];
   excludedRatings?: Array<{ coachId: string; playerId: string }>;
+  currentCoachId?: string; // If provided, only show details button for this coach
 }
 
 type SortField = 'madFromMedian' | 'meanDeviationFromMean' | 'rankCorrelation' | 'playersRated';
@@ -13,7 +14,7 @@ const InfoTooltip = ({ text }: { text: string }) => (
   <span className="text-gray-400 text-xs ml-1 cursor-help" title={text}>&#9432;</span>
 );
 
-export default function CoachAnalysisTab({ reliability, excludedCoachIds, excludedRatings }: Props) {
+export default function CoachAnalysisTab({ reliability, excludedCoachIds, excludedRatings, currentCoachId }: Props) {
   const [sortBy, setSortBy] = useState<SortField>('madFromMedian');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
   const [expandedCoach, setExpandedCoach] = useState<string | null>(null);
@@ -133,12 +134,16 @@ export default function CoachAnalysisTab({ reliability, excludedCoachIds, exclud
                       </span>
                     </td>
                     <td className="px-3 py-2 text-center">
-                      <button
-                        onClick={() => setExpandedCoach(expandedCoach === coach.coachId ? null : coach.coachId)}
-                        className="text-blue-600 hover:text-blue-800 text-xs"
-                      >
-                        {expandedCoach === coach.coachId ? 'Hide' : 'Show'}
-                      </button>
+                      {(!currentCoachId || coach.coachId === currentCoachId) ? (
+                        <button
+                          onClick={() => setExpandedCoach(expandedCoach === coach.coachId ? null : coach.coachId)}
+                          className="text-blue-600 hover:text-blue-800 text-xs"
+                        >
+                          {expandedCoach === coach.coachId ? 'Hide' : 'Show'}
+                        </button>
+                      ) : (
+                        <span className="text-gray-400 text-xs">—</span>
+                      )}
                     </td>
                   </tr>
                   {expandedCoach === coach.coachId && (

@@ -8,10 +8,20 @@ import * as s3deploy from 'aws-cdk-lib/aws-s3-deployment';
 import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
 import * as origins from 'aws-cdk-lib/aws-cloudfront-origins';
 import { Construct } from 'constructs';
+import * as crypto from 'crypto';
 import * as path from 'path';
 
 interface PlayerEvalStackProps extends cdk.StackProps {
   branchName: string;
+}
+
+// Truncate branch names to stay within AWS resource name limits.
+// Produces max 28 chars: first 20 + dash + 8-char hash (if over 28 chars).
+function shortenBranch(name: string): string {
+  const sanitized = name.replace(/[^a-zA-Z0-9]/g, '-');
+  if (sanitized.length <= 28) return sanitized;
+  const hash = crypto.createHash('sha256').update(name).digest('hex').slice(0, 8);
+  return `${sanitized.slice(0, 20)}-${hash}`;
 }
 
 export class PlayerEvalStack extends cdk.Stack {
@@ -20,7 +30,7 @@ export class PlayerEvalStack extends cdk.Stack {
 
     const { branchName } = props;
     const isProduction = branchName === 'main';
-    const branchPrefix = isProduction ? '' : branchName.replace(/[^a-zA-Z0-9]/g, '-');
+    const branchPrefix = isProduction ? '' : shortenBranch(branchName);
 
     // === DynamoDB Table ===
     // Single table design - shared across branches with prefix
@@ -34,6 +44,7 @@ export class PlayerEvalStack extends cdk.Stack {
     });
 
     // === Lambda Function ===
+    const appVersion = process.env.APP_VERSION || 'dev';
     const apiFunction = new lambda.Function(this, 'ApiFunction', {
       runtime: lambda.Runtime.NODEJS_20_X,
       handler: 'api.handler',
@@ -50,6 +61,7 @@ export class PlayerEvalStack extends cdk.Stack {
         BASE_URL: '', // Will be set after CloudFront is created
         NODE_ENV: isProduction ? 'production' : 'development',
         AWS_REGION_NAME: 'us-east-2',
+        APP_VERSION: appVersion,
       },
     });
 
