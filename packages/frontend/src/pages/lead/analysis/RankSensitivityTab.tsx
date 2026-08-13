@@ -1,5 +1,37 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import type { NormalizedPlayerScore, AnalysisResponse } from '@player-eval/shared';
+
+// === Session-persistent cache for LOCO analysis ===
+const STORAGE_KEY_PREFIX = 'playereval_loco_';
+
+function getStorageKey(suffix: string, fingerprint: string): string {
+  return `${STORAGE_KEY_PREFIX}${fingerprint}_${suffix}`;
+}
+
+/** Generate a fingerprint from the current analysis state to invalidate cache when data changes */
+function getAnalysisFingerprint(analysis: AnalysisResponse, currentExcludedCoachIds: string[]): string {
+  // Use total evaluations + excluded coaches + player count as a cheap fingerprint
+  const meta = analysis.metadata;
+  return `${meta.totalPlayers}_${meta.totalCoaches}_${meta.totalEvaluations}_${currentExcludedCoachIds.sort().join(',')}`;
+}
+
+function loadFromStorage<T>(key: string): T | null {
+  try {
+    const raw = sessionStorage.getItem(key);
+    if (!raw) return null;
+    return JSON.parse(raw) as T;
+  } catch {
+    return null;
+  }
+}
+
+function saveToStorage<T>(key: string, data: T): void {
+  try {
+    sessionStorage.setItem(key, JSON.stringify(data));
+  } catch {
+    // sessionStorage full or unavailable — silently fail
+  }
+}
 
 interface Props {
   /** Current analysis (with active exclusions applied) */
@@ -50,31 +82,82 @@ export default function RankSensitivityTab({
   currentExcludedCoachIds,
   getCoachDisplayName,
 }: Props) {
-  const [locoResults, setLocoResults] = useState<LocoResult[]>([]);
-  const [comboResults2, setComboResults2] = useState<LocoResult[]>([]);
-  const [comboResults3, setComboResults3] = useState<LocoResult[]>([]);
+  // Fingerprint to detect when underlying data has changed (invalidates cache)
+  const fingerprint = useMemo(
+    () => getAnalysisFingerprint(analysis, currentExcludedCoachIds),
+    [analysis, currentExcludedCoachIds]
+  );
+
+  // Load cached results from sessionStorage on mount / fingerprint change
+  const [locoResults, setLocoResults] = useState<LocoResult[]>(() =>
+    loadFromStorage(getStorageKey('l1co', fingerprint)) || []
+  );
+  const [comboResults2, setComboResults2] = useState<LocoResult[]>(() =>
+    loadFromStorage(getStorageKey('l2co', fingerprint)) || []
+  );
+  const [comboResults3, setComboResults3] = useState<LocoResult[]>(() =>
+    loadFromStorage(getStorageKey('l3co', fingerprint)) || []
+  );
+  const [computed, setComputed] = useState<Set<ComboLevel>>(() => {
+    const stored = loadFromStorage<number[]>(getStorageKey('computed', fingerprint));
+    return stored ? new Set(stored as ComboLevel[]) : new Set<ComboLevel>();
+  });
+
   const [loading, setLoading] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState('');
-  const [computed, setComputed] = useState<Set<ComboLevel>>(new Set());
   const [viewMode, setViewMode] = useState<ViewMode>('summary');
   const [outlierMode, setOutlierMode] = useState<'with' | 'without'>('with');
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
   const [activeComboLevel, setActiveComboLevel] = useState<ComboLevel>(1);
   const [stabilityLevel, setStabilityLevel] = useState<ComboLevel>(1);
 
-  // === Analysis response cache ===
-  // Keyed by sorted excluded coach IDs string. Survives across re-renders until the tab unmounts.
-  const analysisCache = useRef<Map<string, AnalysisResponse>>(new Map());
+  // Invalidate cache when fingerprint changes
+  const prevFingerprint = useRef(fingerprint);
+  useEffect(() => {
+    if (prevFingerprint.current !== fingerprint) {
+      // Data changed — clear cached results
+      setLocoResults([]);
+      setComboResults2([]);
+      setComboResults3([]);
+      setComputed(new Set());
+      // Clean up old sessionStorage entries
+      try {
+        const oldFp = prevFingerprint.current;
+        sessionStorage.removeItem(getStorageKey('l1co', oldFp));
+        sessionStorage.removeItem(getStorageKey('l2co', oldFp));
+        sessionStorage.removeItem(getStorageKey('l3co', oldFp));
+        sessionStorage.removeItem(getStorageKey('computed', oldFp));
+        sessionStorage.removeItem(getStorageKey('apiCache', oldFp));
+      } catch {}
+      prevFingerprint.current = fingerprint;
+    }
+  }, [fingerprint]);
+
+  // === API response cache (persisted to sessionStorage) ===
+  const apiCacheRef = useRef<Map<string, AnalysisResponse>>(
+    (() => {
+      const stored = loadFromStorage<[string, AnalysisResponse][]>(getStorageKey('apiCache', fingerprint));
+      return stored ? new Map(stored) : new Map();
+    })()
+  );
+
+  /** Save API cache to sessionStorage */
+  const persistApiCache = useCallback(() => {
+    const entries = [...apiCacheRef.current.entries()];
+    // Limit to 100 entries to avoid hitting storage limits
+    const trimmed = entries.slice(-100);
+    saveToStorage(getStorageKey('apiCache', fingerprint), trimmed);
+  }, [fingerprint]);
 
   /** Cached version of getAnalysisForExclusion */
   const getCachedAnalysis = async (excludedIds: string[]): Promise<AnalysisResponse | null> => {
     const key = [...excludedIds].sort().join('|');
-    if (analysisCache.current.has(key)) {
-      return analysisCache.current.get(key)!;
+    if (apiCacheRef.current.has(key)) {
+      return apiCacheRef.current.get(key)!;
     }
     const result = await getAnalysisForExclusion(excludedIds);
     if (result) {
-      analysisCache.current.set(key, result);
+      apiCacheRef.current.set(key, result);
     }
     return result;
   };
@@ -187,6 +270,7 @@ export default function RankSensitivityTab({
    * Run LOCO analysis with cascade:
    * - L3CO also computes L2CO and L1CO
    * - L2CO also computes L1CO
+   * Results are persisted to sessionStorage.
    */
   const runLocoAnalysis = async (targetLevel: ComboLevel) => {
     setLoading(true);
@@ -199,18 +283,32 @@ export default function RankSensitivityTab({
       }
     }
 
+    const newComputed = new Set(computed);
+
     for (const level of levelsToCompute) {
       const totalPerms = comboCount(level);
       setLoadingMessage(`Computing L${level}CO (${totalPerms} permutation${totalPerms > 1 ? 's' : ''})...`);
 
       const results = await computeLevel(level);
 
-      if (level === 1) setLocoResults(results);
-      else if (level === 2) setComboResults2(results);
-      else if (level === 3) setComboResults3(results);
+      if (level === 1) {
+        setLocoResults(results);
+        saveToStorage(getStorageKey('l1co', fingerprint), results);
+      } else if (level === 2) {
+        setComboResults2(results);
+        saveToStorage(getStorageKey('l2co', fingerprint), results);
+      } else if (level === 3) {
+        setComboResults3(results);
+        saveToStorage(getStorageKey('l3co', fingerprint), results);
+      }
 
-      setComputed((prev) => new Set([...prev, level]));
+      newComputed.add(level);
+      setComputed(new Set(newComputed));
+      saveToStorage(getStorageKey('computed', fingerprint), [...newComputed]);
     }
+
+    // Persist API cache
+    persistApiCache();
 
     setLoading(false);
     setLoadingMessage('');
