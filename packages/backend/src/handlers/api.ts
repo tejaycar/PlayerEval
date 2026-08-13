@@ -872,14 +872,13 @@ export async function handler(event: Event): Promise<Result> {
   if (method === 'POST' && path === '/evaluations/analysis') {
     // Enforce visibility settings for non-leads.
     // Both the coach Results page and Analysis page call this endpoint,
-    // so block access if either visibility setting is disabled.
+    // so allow access if EITHER visibility setting is enabled.
     if (!isLead) {
       const teamMeta = await getItem(`TEAM#${teamId}`, 'META');
-      if (teamMeta?.coachAnalysisVisible === false) {
+      const resultsVisible = teamMeta?.coachResultsVisible !== false;
+      const analysisVisible = teamMeta?.coachAnalysisVisible !== false;
+      if (!resultsVisible && !analysisVisible) {
         return json(403, { error: 'Analysis is not currently available' });
-      }
-      if (teamMeta?.coachResultsVisible === false) {
-        return json(403, { error: 'Results are not currently available' });
       }
     }
 
